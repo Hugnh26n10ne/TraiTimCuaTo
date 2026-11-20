@@ -516,15 +516,13 @@ function showShare(url) {
 function buildQrImage() {
   const src = qrEl.querySelector("canvas") || qrEl.querySelector("img");
   if (!src) return null;
-  const c = document.createElement("canvas"); c.width = 720; c.height = 860;
+  const c = document.createElement("canvas"); c.width = 720; c.height = 800;
   const g = c.getContext("2d");
   g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
   g.imageSmoothingEnabled = false;
   g.drawImage(src, 80, 80, 560, 560);
   g.fillStyle = "#f76070"; g.textAlign = "center"; g.font = "600 40px 'Segoe UI', system-ui, sans-serif";
-  g.fillText("Quét để xem trái tim", c.width / 2, 720);
-  g.fillStyle = "#999"; g.font = "24px 'Segoe UI', system-ui, sans-serif";
-  g.fillText("HungDam_TraiTim", c.width / 2, 770);
+  g.fillText("Quét để xem trái tim", c.width / 2, 735);
   return c;
 }
 async function downloadQr() {
