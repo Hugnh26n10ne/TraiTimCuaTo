@@ -73,16 +73,16 @@ const HEART_COLOR = "#f76070";          // màu trái tim
 const HEART_SCALE = 1.6;                 // độ to của trái tim (1 = bằng bản Python)
 const ORBIT_RADIUS = 600;                // bán kính ngang của vòng elip (px)
 const ORBIT_DEPTH = 0.4;                 // độ sâu so với chiều ngang (1 = tròn, càng nhỏ elip càng dẹt)
-const ORBIT_TILT = 0.7;                  // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
+const ORBIT_TILT = 0.3;                  // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
 const ORBIT_SPEED = 0.45;                // tốc độ xoay trung bình (rad/giây)
 const ORBIT_EASE = 0.65;                 // 0 = đều; càng gần 1 ảnh càng chậm lại khi ra phía trước và vút nhanh khi ra sau
 const SOUND_VOLUME = 1.0;                // âm lượng tiếng tim đập (0..1)
 const PERSPECTIVE = 1400;                // càng nhỏ, hiệu ứng xa gần càng mạnh
 const PHOTO_W = 130, PHOTO_H = 168;      // kích thước thẻ ảnh (px)
 const PHOTO_RADIUS = 14;                 // bo góc thẻ ảnh
-const SHADOW_COLOR = "rgba(247, 96, 112, 0.75)"; // màu bóng đổ dưới ảnh
-const SHADOW_BLUR = 28;                  // độ nhoè của bóng
-const SHADOW_OFFSET = 18;                // bóng lệch xuống dưới bao nhiêu px
+const REFLECT_HEIGHT = 0.7;              // chiều cao phản chiếu so với ảnh (0..1)
+const REFLECT_ALPHA = 0.45;              // độ rõ của phản chiếu ở sát mép ảnh
+const REFLECT_GAP = 3;                   // khe hở giữa ảnh và mặt nước (px)
 const UPLOAD_MAX_SIDE = 900;             // ảnh tải lên được thu nhỏ về cạnh dài tối đa này (px)
 // ======================
 
@@ -176,7 +176,7 @@ function layoutPhotos(time) {
     // a = t + E*cos(t): tốc độ góc = 1 - E*sin(t) -> chậm nhất ở phía trước (sin=1), nhanh nhất ở phía sau
     const a = t + ORBIT_EASE * Math.cos(t);
     const x3 = R * Math.cos(a), z3 = RZ * Math.sin(a);    // z > 0: phía trước tim, z < 0: phía sau
-    const y3 = z3 * (innerWidth < 600 ? 1.6 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
+    const y3 = z3 * (innerWidth < 600 ? 1.2 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
     const scale = PERSPECTIVE / (PERSPECTIVE - z3 * 0.9);
     // ẩn dần khi chạy ra sau tim: hiện rõ khi z > 0.15R, mất hẳn khi z < -0.15R
     const visible = Math.max(0, Math.min(1, (z3 / RZ + 0.15) / 0.3));
@@ -190,21 +190,35 @@ function drawCard(ctx, p) {
   const f = p.scale * cardFit(), w = PHOTO_W * f, h = PHOTO_H * f, r = PHOTO_RADIUS * f;
   const depth = (p.z + p.R) / (2 * p.R);
   const x = p.x - w / 2, y = p.y - h / 2;
-  ctx.save();
-  ctx.globalAlpha = (0.5 + 0.5 * depth) * p.visible;
-  // bóng đổ xuống dưới ảnh (quầng hồng mờ, vì nền đen nên bóng đen sẽ không thấy)
-  ctx.shadowColor = SHADOW_COLOR;
-  ctx.shadowBlur = SHADOW_BLUR * f;
-  ctx.shadowOffsetY = SHADOW_OFFSET * f;
-  roundRect(ctx, x, y, w, h, r);
-  ctx.fillStyle = "#000"; ctx.fill();
-  ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-  // ảnh, không viền
-  roundRect(ctx, x, y, w, h, r); ctx.clip();
   const img = p.img, ar = PHOTO_W / PHOTO_H;
-  let sw = img.width, sh = img.height;
+  let sw = img.width, sh = img.height;                       // cắt ảnh theo tỉ lệ thẻ (kiểu cover)
   if (sw / sh > ar) sw = sh * ar; else sh = sw / ar;
-  ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h);
+  const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+  const alpha = (0.5 + 0.5 * depth) * p.visible;
+
+  // ảnh chính, không viền, không bóng
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  roundRect(ctx, x, y, w, h, r); ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  ctx.restore();
+
+  // phản chiếu kiểu mặt nước: lật ngược xuống dưới rồi mờ dần
+  const rh = h * REFLECT_HEIGHT, ry = y + h + REFLECT_GAP * f;
+  ctx.save();
+  ctx.globalAlpha = alpha * REFLECT_ALPHA;
+  roundRect(ctx, x, ry, w, rh, r); ctx.clip();
+  ctx.translate(0, ry * 2 + h);                              // lật dọc quanh mép dưới ảnh
+  ctx.scale(1, -1);
+  ctx.drawImage(img, sx, sy, sw, sh, x, ry, w, h);           // vẽ lại ảnh (đã lật) đúng khung phản chiếu
+  ctx.restore();
+  // phủ dải đen mờ dần để phản chiếu tan vào nền như mặt nước
+  ctx.save();
+  roundRect(ctx, x, ry, w, rh, r); ctx.clip();
+  const g = ctx.createLinearGradient(0, ry, 0, ry + rh);
+  g.addColorStop(0, "rgba(0,0,0,0.15)");
+  g.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.fillStyle = g; ctx.fillRect(x, ry, w, rh);
   ctx.restore();
 }
 
