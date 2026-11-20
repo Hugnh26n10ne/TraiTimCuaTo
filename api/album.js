@@ -1,35 +1,23 @@
-// POST {images:[url...]} -> tạo album, trả về {id}
-// GET  ?id=...           -> trả về {images:[...]}
-import { put, list } from "@vercel/blob";
+// POST {images:[url...], messages:[...], cover:url} -> tạo album, trả về {id}
+// GET  ?id=...                                        -> trả về {images, messages, cover}
 import { randomBytes } from "node:crypto";
-
-// Lấy token Blob: mặc định BLOB_READ_WRITE_TOKEN, hoặc bất kỳ biến nào kết thúc bằng _READ_WRITE_TOKEN (khi đặt tiền tố khác lúc tạo Blob)
-function blobToken() {
-  const isBlob = v => typeof v === "string" && v.startsWith("vercel_blob_rw_");   // token Blob thật luôn có tiền tố này
-  if (isBlob(process.env.BLOB_READ_WRITE_TOKEN)) return process.env.BLOB_READ_WRITE_TOKEN;
-  const hit = Object.entries(process.env).find(([k, v]) => k.endsWith("_READ_WRITE_TOKEN") && isBlob(v));
-  return hit ? hit[1] : (Object.values(process.env).find(isBlob) || null);
-}
-
-
-const isBlobUrl = u => { try { return new URL(u).hostname.endsWith(".public.blob.vercel-storage.com"); } catch { return false; } };
+import { blobToken, putAuto, getAuto, streamToText, isOurUrl } from "./_lib/blob.js";
 
 async function handle(req, res) {
-  const token = blobToken();
-  if (!token) return res.status(500).json({ error: "Chưa cấu hình Blob storage trên Vercel (thiếu biến *_READ_WRITE_TOKEN, hãy Connect Blob vào project rồi Redeploy)" });
+  if (!blobToken()) return res.status(500).json({ error: "Chưa cấu hình Blob storage trên Vercel (hãy Connect Blob vào project rồi Redeploy)" });
 
   if (req.method === "POST") {
     let body = req.body;
     if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = null; } }
-    const images = Array.isArray(body?.images) ? body.images.filter(isBlobUrl).slice(0, 30) : [];
+    const images = Array.isArray(body?.images) ? body.images.filter(isOurUrl).slice(0, 30) : [];
     const messages = Array.isArray(body?.messages)
       ? body.messages.filter(m => typeof m === "string").map(m => m.trim().slice(0, 200)).filter(Boolean).slice(0, 30)
       : [];
-    const cover = typeof body?.cover === "string" && isBlobUrl(body.cover) ? body.cover : null;
+    const cover = isOurUrl(body?.cover) ? body.cover : null;
     if (!images.length && !messages.length && !cover) return res.status(400).json({ error: "Chưa có ảnh hoặc lời nhắn nào" });
     const id = randomBytes(5).toString("base64url");
-    await put(`albums/${id}.json`, JSON.stringify({ images, messages, cover, created: Date.now() }), {
-      access: "public", contentType: "application/json", addRandomSuffix: false, token,
+    await putAuto(`albums/${id}.json`, JSON.stringify({ images, messages, cover, created: Date.now() }), {
+      contentType: "application/json", addRandomSuffix: false,
     });
     return res.status(200).json({ id });
   }
@@ -37,9 +25,9 @@ async function handle(req, res) {
   if (req.method === "GET") {
     const id = String(req.query.id || "");
     if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: "id không hợp lệ" });
-    const { blobs } = await list({ prefix: `albums/${id}.json`, limit: 1, token });
-    if (!blobs.length) return res.status(404).json({ error: "Không tìm thấy album" });
-    const data = await (await fetch(blobs[0].url)).json();
+    const r = await getAuto(`albums/${id}.json`);
+    if (!r) return res.status(404).json({ error: "Không tìm thấy album" });
+    const data = JSON.parse(await streamToText(r.stream));
     res.setHeader("Cache-Control", "public, max-age=300");
     return res.status(200).json({ images: data.images || [], messages: data.messages || [], cover: data.cover || null });
   }
@@ -49,8 +37,5 @@ async function handle(req, res) {
 
 export default async function handler(req, res) {
   try { await handle(req, res); }
-  catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Lỗi server: " + (e && e.message ? e.message : String(e)) });
-  }
+  catch (e) { console.error(e); res.status(500).json({ error: "Lỗi server: " + (e && e.message ? e.message : String(e)) }); }
 }

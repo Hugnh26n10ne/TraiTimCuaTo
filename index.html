@@ -287,8 +287,8 @@ function compressImage(file, maxSide = UPLOAD_MAX_SIDE) {
   });
 }
 
-async function uploadBlob(blob, name) {
-  const r = await fetch("/api/upload?type=image/jpeg&name=" + encodeURIComponent(name), { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blob });
+async function uploadBlob(blob, name, kind = "photo") {
+  const r = await fetch("/api/upload?type=image/jpeg&kind=" + kind + "&name=" + encodeURIComponent(name), { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blob });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "upload " + r.status);
   return (await r.json()).url;
 }
@@ -332,7 +332,7 @@ coverInput.onchange = async () => {
     await setCover(URL.createObjectURL(small));
     if (location.protocol.startsWith("http")) {
       toast("Đang tải ảnh nền lên...", 0);
-      coverUrl = await uploadBlob(small, "cover.jpg");
+      coverUrl = await uploadBlob(small, "cover.jpg", "cover");
       toast("Đã đặt ảnh nền.", 2000);
     } else toast("Đã đặt ảnh nền (tải lên server chỉ dùng được trên web).", 3000);
   } catch (e) { console.error(e); toast("Không đặt được ảnh nền: " + e.message, 4000); }
