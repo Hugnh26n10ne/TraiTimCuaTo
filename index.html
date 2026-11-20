@@ -18,18 +18,30 @@
       background: rgba(0,0,0,.65); color: #ffb3c1; font-size: 15px; cursor: pointer; opacity: .75;
     }
     #bar button:hover, #bar button:active { opacity: 1; background: rgba(247,96,112,.25); }
-    #bar button.on { opacity: 1; background: rgba(247,96,112,.35); color: #fff; }
     @media (max-width: 600px) {
       #bar { gap: 6px; padding: 0 8px; flex-wrap: wrap; }
       #bar button { padding: 8px 12px; font-size: 13px; }
     }
     #file, #coverFile { display: none; }
-    body.viewer #bar { display: none; }               /* người xem qua link QR không thấy nút */
-    #msgModal textarea {
-      width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical; font: 15px/1.5 system-ui, sans-serif;
+    body.viewer #setupBtn { display: none; }          /* người xem qua link QR: chỉ có nút Xem lại */
+    body:not(.viewer) #replayBtn { display: none; }
+    #setupModal textarea {
+      width: 100%; box-sizing: border-box; min-height: 110px; resize: vertical; font: 15px/1.5 system-ui, sans-serif;
       border: 1px solid #f3c1c9; border-radius: 10px; padding: 10px; margin-bottom: 6px; color: #222;
     }
-    #msgModal .hint { font-size: 12px; color: #777; margin-bottom: 12px; text-align: left; }
+    .modal .box.wide { width: min(94vw, 430px); max-height: 88vh; overflow: auto; }
+    .field { text-align: left; margin-bottom: 14px; }
+    .field > label { display: block; font-size: 13px; color: #666; margin-bottom: 6px; }
+    .pick { padding: 7px 12px; border: 1px dashed #f76070; border-radius: 10px; background: #fff5f6; color: #c84b5a; font-size: 13px; cursor: pointer; margin-right: 6px; }
+    .coverRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .coverPrev { width: 56px; height: 72px; object-fit: cover; border-radius: 8px; background: #eee; }
+    .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .thumbs .t { position: relative; width: 56px; height: 72px; border-radius: 8px; overflow: hidden; background: #eee; }
+    .thumbs .t img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumbs .t button { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border: none; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; font-size: 12px; line-height: 18px; padding: 0; cursor: pointer; }
+    .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #333; cursor: pointer; }
+    .switch input { width: 18px; height: 18px; accent-color: #f76070; }
+    .status { font-size: 12px; color: #888; min-height: 16px; text-align: left; margin-bottom: 10px; }
     #toast {
       position: fixed; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,.75); color: #ffb3c1; border: 1px solid #f76070; border-radius: 20px;
@@ -52,24 +64,41 @@
 <canvas id="heart"></canvas>
 
 <div id="bar">
-  <button id="msgBtn">✎ Lời nhắn</button>
-  <button id="coverBtn">🖼 Ảnh nền</button>
-  <button id="addBtn">+ Thêm ảnh</button>
-  <button id="qrBtn">Tạo QR</button>
-  <button id="soundBtn" title="Bật/tắt tiếng tim đập">🔇 Âm thanh</button>
+  <button id="setupBtn">✎ Thiết lập &amp; tạo QR</button>
+  <button id="replayBtn">↻ Xem lại</button>
 </div>
 <input id="file" type="file" accept="image/*" multiple>
 <input id="coverFile" type="file" accept="image/*">
 <div id="toast"></div>
 
-<div id="msgModal" class="modal">
-  <div class="box">
-    <h3>Lời nhắn mở đầu</h3>
-    <textarea id="msgText" placeholder="Mỗi dòng là một câu, các câu sẽ lần lượt hiện lên trước khi trái tim xuất hiện"></textarea>
-    <div class="hint">Mỗi dòng một câu. Để trống thì trái tim hiện ngay.</div>
+<div id="setupModal" class="modal">
+  <div class="box wide">
+    <h3>Thiết lập trái tim</h3>
+    <div class="field">
+      <label>Lời nhắn mở đầu (mỗi dòng một câu, để trống thì trái tim hiện ngay)</label>
+      <textarea id="msgText" placeholder="Gửi đến người mình thương&#10;Mỗi nhịp đập này là dành cho bạn"></textarea>
+    </div>
+    <div class="field">
+      <label>Ảnh nền (áo đen, khung cổ đến ngực; sẽ zoom vào ngực rồi tim hiện ra)</label>
+      <div class="coverRow">
+        <img id="coverPrev" class="coverPrev" alt="" hidden>
+        <button class="pick" id="coverPick">Chọn ảnh nền</button>
+        <button class="pick" id="coverClear">Bỏ ảnh nền</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Ảnh chạy quanh tim</label>
+      <div class="thumbs" id="thumbs"></div>
+      <button class="pick" id="photoPick">+ Thêm ảnh</button>
+    </div>
+    <div class="field">
+      <label class="switch"><input type="checkbox" id="soundChk" checked> Có tiếng tim đập</label>
+    </div>
+    <div class="status" id="setupStatus"></div>
     <div class="row">
-      <button id="msgSaveBtn">Lưu &amp; xem lại</button>
-      <button id="msgCloseBtn" class="ghost">Đóng</button>
+      <button id="previewBtn" class="ghost">Xem thử</button>
+      <button id="qrBtn">Tạo QR</button>
+      <button id="setupCloseBtn" class="ghost">Đóng</button>
     </div>
   </div>
 </div>
@@ -293,24 +322,47 @@ async function uploadBlob(blob, name, kind = "photo") {
   return (await r.json()).url;
 }
 
-// ---- Lời nhắn mở đầu ----
+// ---- Chế độ: người tạo (có form) / người xem qua link QR (chỉ nút Xem lại) ----
 const albumId = new URLSearchParams(location.search).get("a");
-const isViewer = !!albumId;                                   // mở từ link QR: chỉ xem, không có nút
+const isViewer = !!albumId;
 if (isViewer) document.body.classList.add("viewer");
 
 let messages = [...DEFAULT_MESSAGES];
-if (!isViewer) { try { const saved = JSON.parse(localStorage.getItem("hdt_messages")); if (Array.isArray(saved)) messages = saved; } catch {} }
+let soundEnabled = true;                                      // người tạo chọn có tiếng tim đập hay không
+if (!isViewer) {
+  try { const saved = JSON.parse(localStorage.getItem("hdt_messages")); if (Array.isArray(saved)) messages = saved; } catch {}
+  try { const sv = localStorage.getItem("hdt_sound"); if (sv !== null) soundEnabled = sv === "1"; } catch {}
+}
 
-const msgModal = document.getElementById("msgModal"), msgText = document.getElementById("msgText");
-document.getElementById("msgBtn").onclick = () => { msgText.value = messages.join("\n"); msgModal.classList.add("show"); msgText.focus(); };
-document.getElementById("msgCloseBtn").onclick = () => msgModal.classList.remove("show");
-msgModal.addEventListener("click", e => { if (e.target === msgModal) msgModal.classList.remove("show"); });
-document.getElementById("msgSaveBtn").onclick = () => {
+// ---- Form thiết lập ----
+const setupModal = document.getElementById("setupModal"), msgText = document.getElementById("msgText");
+const soundChk = document.getElementById("soundChk"), setupStatus = document.getElementById("setupStatus");
+const coverPrev = document.getElementById("coverPrev"), thumbsEl = document.getElementById("thumbs");
+const status = msg => { setupStatus.textContent = msg; };
+function renderForm() {
+  msgText.value = messages.join("\n");
+  soundChk.checked = soundEnabled;
+  if (coverImg) { coverPrev.src = coverImg.src; coverPrev.hidden = false; } else coverPrev.hidden = true;
+  thumbsEl.innerHTML = "";
+  photos.forEach((p, i) => {
+    const t = document.createElement("div"); t.className = "t";
+    const im = document.createElement("img"); im.src = p.img.src; t.appendChild(im);
+    const x = document.createElement("button"); x.textContent = "×"; x.title = "Bỏ ảnh này";
+    x.onclick = () => { photos.splice(i, 1); renderForm(); };
+    t.appendChild(x); thumbsEl.appendChild(t);
+  });
+}
+function applyForm() {
   messages = msgText.value.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 30);
-  try { localStorage.setItem("hdt_messages", JSON.stringify(messages)); } catch {}
-  msgModal.classList.remove("show");
-  startIntro();
-};
+  soundEnabled = soundChk.checked;
+  try { localStorage.setItem("hdt_messages", JSON.stringify(messages)); localStorage.setItem("hdt_sound", soundEnabled ? "1" : "0"); } catch {}
+  if (!soundEnabled) soundOn = false;
+}
+document.getElementById("setupBtn").onclick = () => { renderForm(); status(""); setupModal.classList.add("show"); };
+document.getElementById("setupCloseBtn").onclick = () => { applyForm(); setupModal.classList.remove("show"); };
+setupModal.addEventListener("click", e => { if (e.target === setupModal) { applyForm(); setupModal.classList.remove("show"); } });
+document.getElementById("previewBtn").onclick = () => { applyForm(); setupModal.classList.remove("show"); startIntro(); };
+document.getElementById("replayBtn").onclick = () => startIntro();
 
 // ---- Ảnh nền (cổ đến ngực) ----
 let coverImg = null, coverUrl = null;                         // coverUrl = link trên server (để lưu vào album)
@@ -323,20 +375,21 @@ function setCover(src, url = null) {
   });
 }
 const coverInput = document.getElementById("coverFile");
-document.getElementById("coverBtn").onclick = () => coverInput.click();
+document.getElementById("coverPick").onclick = () => coverInput.click();
+document.getElementById("coverClear").onclick = () => { coverImg = null; coverUrl = null; renderForm(); status("Đã bỏ ảnh nền."); };
 coverInput.onchange = async () => {
   const f = coverInput.files[0]; coverInput.value = "";
   if (!f) return;
   try {
     const small = await compressImage(f, COVER_MAX_SIDE);
     await setCover(URL.createObjectURL(small));
+    renderForm();
     if (location.protocol.startsWith("http")) {
-      toast("Đang tải ảnh nền lên...", 0);
+      status("Đang tải ảnh nền lên...");
       coverUrl = await uploadBlob(small, "cover.jpg", "cover");
-      toast("Đã đặt ảnh nền.", 2000);
-    } else toast("Đã đặt ảnh nền (tải lên server chỉ dùng được trên web).", 3000);
-  } catch (e) { console.error(e); toast("Không đặt được ảnh nền: " + e.message, 4000); }
-  startIntro();
+      status("Đã đặt ảnh nền.");
+    } else status("Đã đặt ảnh nền (tải lên server chỉ dùng được trên web).");
+  } catch (e) { console.error(e); status("Không đặt được ảnh nền: " + e.message); }
 };
 
 // ---- Màn mở đầu: chữ -> (zoom ảnh nền) -> quầng đỏ, tim đập lớn dần -> tim đập -> ảnh thẻ ----
@@ -345,7 +398,10 @@ let photosAlpha = 0;
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const easeInOut = u => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
 const easeOutCubic = u => 1 - Math.pow(1 - u, 3);
-function startIntro() { intro.phase = "text"; intro.t0 = null; photosAlpha = 0; }   // t0 lấy từ khung hình đầu tiên
+function startIntro() {
+  intro.phase = "text"; intro.t0 = null; photosAlpha = 0;          // t0 lấy từ khung hình đầu tiên
+  if (soundEnabled && !soundOn) toast("Chạm vào màn hình để bật tiếng tim đập", 3500);
+}
 function startGrow(now) { if (coverImg) { intro.phase = "cover"; intro.t0 = now; } else startEmerge(now); }
 function startEmerge(now) { intro.phase = "emerge"; intro.t0 = now; frame = 3; lastHeart = now; playHeartbeat(); }
 function startBeat(now) { intro.phase = "beat"; intro.t0 = now; }
@@ -422,7 +478,7 @@ function drawText(ctx, now) {
 
 // ---- Nút thêm ảnh ----
 const fileInput = document.getElementById("file");
-document.getElementById("addBtn").onclick = () => fileInput.click();
+document.getElementById("photoPick").onclick = () => fileInput.click();
 fileInput.onchange = async () => {
   const files = [...fileInput.files]; fileInput.value = "";
   if (!files.length) return;
@@ -434,16 +490,17 @@ fileInput.onchange = async () => {
       const localUrl = URL.createObjectURL(small);
       const entry = { img: null, url: null };
       await new Promise(res => { const img = new Image(); img.onload = () => { entry.img = img; photos.push(entry); res(); }; img.onerror = res; img.src = localUrl; });
+      renderForm();
       if (isHosted) {
-        toast(`Đang tải lên ${done + 1}/${files.length}...`, 0);
+        status(`Đang tải lên ${done + 1}/${files.length}...`);
         entry.url = await uploadBlob(small, f.name.replace(/\.[^.]+$/, "") + ".jpg");
       }
       done++;
     } catch (e) { failed++; console.error(e); }
   }
-  if (!isHosted) toast("Đã thêm ảnh. Tải lên server và tạo QR chỉ dùng được khi chạy trên web (Vercel).", 4000);
-  else if (failed) toast(`Xong ${done} ảnh, ${failed} ảnh lỗi (có thể chưa cấu hình Blob trên Vercel).`, 4000);
-  else toast(`Đã thêm ${done} ảnh. Bấm "Tạo QR" để gửi cho người khác.`, 3500);
+  if (!isHosted) status("Đã thêm ảnh. Tải lên server và tạo QR chỉ dùng được khi chạy trên web (Vercel).");
+  else if (failed) status(`Xong ${done} ảnh, ${failed} ảnh lỗi.`);
+  else status(`Đã thêm ${done} ảnh.`);
 };
 
 // ---- Tạo QR ----
@@ -455,19 +512,22 @@ function showShare(url) {
   modal.classList.add("show");
 }
 document.getElementById("qrBtn").onclick = async () => {
-  if (!location.protocol.startsWith("http")) return toast("Tạo QR chỉ dùng được khi chạy trên web (Vercel).", 3500);
+  applyForm();
+  if (!location.protocol.startsWith("http")) return status("Tạo QR chỉ dùng được khi chạy trên web (Vercel).");
   const urls = photos.map(p => p.url).filter(Boolean);
   const msgs = messages.filter(m => m.trim());
-  if (!photos.length && !msgs.length) return toast("Hãy thêm ảnh hoặc lời nhắn trước rồi mới tạo QR.", 3000);
-  if (photos.length && urls.length < photos.length) return toast("Có ảnh chưa tải lên được server, hãy thử thêm lại ảnh đó.", 3500);
+  if (!photos.length && !msgs.length && !coverUrl) return status("Hãy nhập lời nhắn hoặc thêm ảnh trước rồi mới tạo QR.");
+  if (photos.length && urls.length < photos.length) return status("Có ảnh chưa tải lên được server, hãy bỏ ảnh đó rồi thêm lại.");
   try {
-    toast("Đang tạo link...", 0);
-    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls, messages: msgs, cover: coverUrl }) });
+    status("Đang tạo link...");
+    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: urls, messages: msgs, cover: coverUrl, sound: soundEnabled }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "album " + r.status);
     const { id } = await r.json();
-    toastEl.classList.remove("show");
+    status("");
+    setupModal.classList.remove("show");
     showShare(location.origin + location.pathname + "?a=" + id);
-  } catch (e) { console.error(e); toast("Không tạo được link: " + e.message, 4000); }
+  } catch (e) { console.error(e); status("Không tạo được link: " + e.message); }
 };
 document.getElementById("closeBtn").onclick = () => modal.classList.remove("show");
 modal.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("show"); });
@@ -487,6 +547,7 @@ async function loadAlbum(id) {
     if (!r.ok) throw new Error("album " + r.status);
     const data = await r.json();
     messages = Array.isArray(data.messages) ? data.messages : [];
+    soundEnabled = data.sound !== false;
     if (data.cover) await setCover(data.cover, data.cover);
     if (Array.isArray(data.images)) await Promise.all(data.images.map(u => addImage(u, u)));
   } catch (e) { console.error(e); messages = []; toast("Không tải được nội dung của link này.", 4000); }
@@ -495,7 +556,6 @@ async function loadAlbum(id) {
 
 // ---- Âm thanh tim đập (Web Audio, không cần file) ----
 let audioCtx = null, soundOn = false;
-const soundBtn = document.getElementById("soundBtn");
 
 let master = null;                                 // tầng khuếch đại chung + nén để to mà không rè
 function getMaster() {
@@ -519,7 +579,7 @@ function thump(when, freq, gain, dur) {           // một tiếng "thụp" tr�
   o.start(when); o.stop(when + dur + 0.05);
 }
 function playHeartbeat() {                         // "lub" rồi "dub" nhẹ hơn sau 0.15s
-  if (!soundOn || !audioCtx || audioCtx.state !== "running" || (intro.phase !== "beat" && intro.phase !== "emerge")) return;
+  if (!soundEnabled || !soundOn || !audioCtx || audioCtx.state !== "running" || (intro.phase !== "beat" && intro.phase !== "emerge")) return;
   const t = audioCtx.currentTime + 0.01;
   thump(t, 48, 1.0, 0.30);
   thump(t + 0.15, 42, 0.65, 0.26);
@@ -531,18 +591,12 @@ async function setSound(on) {
     if (audioCtx.state !== "running") { toast("Không bật được âm thanh, hãy chạm lại vào màn hình.", 3000); return; }
   }
   soundOn = on;
-  soundBtn.textContent = on ? "🔊 Âm thanh" : "🔇 Âm thanh";
-  soundBtn.classList.toggle("on", on);
 }
-soundBtn.onclick = e => { e.stopPropagation(); setSound(!soundOn); };
-// chạm/click lần đầu vào trang là bật luôn (trình duyệt chỉ cho phát âm sau khi người dùng tương tác)
-function firstTouch(e) {
-  if (e.target.closest("#bar, #modal")) return;
-  removeEventListener("pointerdown", firstTouch);
-  if (!soundOn) setSound(true);
-}
-addEventListener("pointerdown", firstTouch);
-setTimeout(() => { if (!soundOn) toast("Chạm vào màn hình để bật tiếng tim đập", 3500); }, 800);
+// chạm/click vào trang là bật tiếng (trình duyệt chỉ cho phát âm sau khi người dùng tương tác), nếu người tạo có bật âm thanh
+addEventListener("pointerdown", e => {
+  if (e.target.closest("#bar, .modal")) return;
+  if (soundEnabled && !soundOn) setSound(true);
+});
 
 // ---- Vòng lặp ----
 const canvas = document.getElementById("heart"), ctx = canvas.getContext("2d");

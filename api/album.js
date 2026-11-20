@@ -14,9 +14,10 @@ async function handle(req, res) {
       ? body.messages.filter(m => typeof m === "string").map(m => m.trim().slice(0, 200)).filter(Boolean).slice(0, 30)
       : [];
     const cover = isOurUrl(body?.cover) ? body.cover : null;
+    const sound = body?.sound !== false;
     if (!images.length && !messages.length && !cover) return res.status(400).json({ error: "Chưa có ảnh hoặc lời nhắn nào" });
     const id = randomBytes(5).toString("base64url");
-    await putAuto(`albums/${id}.json`, JSON.stringify({ images, messages, cover, created: Date.now() }), {
+    await putAuto(`albums/${id}.json`, JSON.stringify({ images, messages, cover, sound, created: Date.now() }), {
       contentType: "application/json", addRandomSuffix: false,
     });
     return res.status(200).json({ id });
@@ -29,7 +30,7 @@ async function handle(req, res) {
     if (!r) return res.status(404).json({ error: "Không tìm thấy album" });
     const data = JSON.parse(await streamToText(r.stream));
     res.setHeader("Cache-Control", "public, max-age=300");
-    return res.status(200).json({ images: data.images || [], messages: data.messages || [], cover: data.cover || null });
+    return res.status(200).json({ images: data.images || [], messages: data.messages || [], cover: data.cover || null, sound: data.sound !== false });
   }
 
   res.status(405).json({ error: "Method not allowed" });

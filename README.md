@@ -14,12 +14,15 @@ Trái tim đập 3D của HungDam_TraiTim, có vòng ảnh xoay quanh, thêm ả
 2. Trong project trên Vercel vào **Storage**, bấm **Create Database**, chọn **Blob**, đặt tên tuỳ ý, rồi **Connect** vào project. Vercel sẽ tự thêm biến môi trường dạng `*_READ_WRITE_TOKEN` (API tự nhận ra dù tên biến là gì). Kho Blob public hay private đều dùng được: kho private thì ảnh được phục vụ qua `/api/file`.
 3. Vào **Deployments**, bấm **Redeploy** bản mới nhất để API nhận được token.
 
-Sau đó mở link `https://<tên-app>.vercel.app` trên điện thoại:
+Sau đó mở link `https://<tên-app>.vercel.app` trên điện thoại. Người tạo chỉ có một nút **Thiết lập & tạo QR**, mở ra form gồm:
 
-- **Ảnh nền**: ảnh chàng trai áo đen, khung cổ đến ngực. Sau lời nhắn, ảnh hiện dần, zoom chậm vào vị trí tim, quầng đỏ lóe lên rồi trái tim đập lớn dần từ đúng điểm đó tới cỡ mặc định. Chọn bằng nút Ảnh nền, hoặc đặt file `cover.jpg` cạnh `index.html`. Vị trí tim trên ảnh chỉnh bằng `COVER_FOCUS_X`, `COVER_FOCUS_Y` (tỉ lệ 0..1). Không có ảnh nền thì bỏ qua pha này.
-- **Lời nhắn**: mỗi dòng một câu. Khi mở trang, các câu lần lượt hiện dần, giữ 1 giây rồi mờ đi; hết chữ thì trái tim lớn dần từ bé xíu rồi bắt đầu đập, ảnh hiện ra sau đó.
-- **+ Thêm ảnh**: chọn ảnh trong máy, ảnh được thu nhỏ rồi tải lên Blob.
-- **Tạo QR**: tạo link riêng dạng `?a=<id>` chứa lời nhắn và bộ ảnh vừa tải, hiện mã QR, có nút sao chép và chia sẻ. Người mở link QR chỉ xem, không thấy các nút.
+- **Lời nhắn mở đầu**: mỗi dòng một câu. Các câu lần lượt hiện dần, giữ 1 giây rồi mờ đi.
+- **Ảnh nền**: ảnh chàng trai áo đen, khung cổ đến ngực. Sau lời nhắn, ảnh hiện dần, zoom chậm vào vị trí tim, quầng đỏ lóe lên rồi trái tim đập lớn dần từ đúng điểm đó tới cỡ mặc định. Không có ảnh nền thì bỏ qua pha này. Có thể đặt sẵn file `cover.jpg` cạnh `index.html`; vị trí tim chỉnh bằng `COVER_FOCUS_X`, `COVER_FOCUS_Y`.
+- **Ảnh chạy quanh tim**: thêm hoặc bỏ từng ảnh, ảnh được thu nhỏ rồi tải lên Blob.
+- **Có tiếng tim đập**: bật hoặc tắt âm thanh cho người xem.
+- **Xem thử** chạy lại từ đầu với thiết lập hiện tại. **Tạo QR** lưu toàn bộ thiết lập vào link dạng `?a=<id>`, hiện mã QR, có nút sao chép và chia sẻ.
+
+Người mở link QR thấy đúng màn trình diễn đã tạo, không có form hay nút tạo QR, chỉ có nút **Xem lại**.
 
 ## Chỉnh hiệu ứng
 
