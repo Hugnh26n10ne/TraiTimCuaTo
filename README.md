@@ -11,7 +11,7 @@ Trái tim đập 3D của HungDam_TraiTim, có vòng ảnh xoay quanh, thêm ả
 ## Deploy lên Vercel
 
 1. Push repo lên GitHub, vào https://vercel.com/new và Import repo này. Framework chọn **Other**, giữ nguyên mặc định, bấm Deploy.
-2. Trong project trên Vercel vào **Storage**, bấm **Create Database**, chọn **Blob**, đặt tên tuỳ ý, rồi **Connect** vào project. Vercel sẽ tự thêm biến môi trường `BLOB_READ_WRITE_TOKEN`.
+2. Trong project trên Vercel vào **Storage**, bấm **Create Database**, chọn **Blob**, đặt tên tuỳ ý, rồi **Connect** vào project. Vercel sẽ tự thêm biến môi trường dạng `*_READ_WRITE_TOKEN` (API tự nhận ra dù tên biến là gì). Kho Blob public hay private đều dùng được: kho private thì ảnh được phục vụ qua `/api/file`.
 3. Vào **Deployments**, bấm **Redeploy** bản mới nhất để API nhận được token.
 
 Sau đó mở link `https://<tên-app>.vercel.app` trên điện thoại:
