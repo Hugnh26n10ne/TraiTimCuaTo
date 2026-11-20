@@ -109,6 +109,7 @@
     <div id="qr"></div>
     <div id="link"></div>
     <div class="row">
+      <button id="dlBtn">Tải ảnh QR</button>
       <button id="copyBtn">Sao chép link</button>
       <button id="shareBtn">Chia sẻ</button>
       <button id="closeBtn" class="ghost">Đóng</button>
@@ -511,6 +512,39 @@ function showShare(url) {
   new QRCode(qrEl, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
   modal.classList.add("show");
 }
+// Ghép ảnh QR để tải về: nền trắng, mã QR to, chú thích bên dưới
+function buildQrImage() {
+  const src = qrEl.querySelector("canvas") || qrEl.querySelector("img");
+  if (!src) return null;
+  const c = document.createElement("canvas"); c.width = 720; c.height = 860;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(src, 80, 80, 560, 560);
+  g.fillStyle = "#f76070"; g.textAlign = "center"; g.font = "600 40px 'Segoe UI', system-ui, sans-serif";
+  g.fillText("Quét để xem trái tim", c.width / 2, 720);
+  g.fillStyle = "#999"; g.font = "24px 'Segoe UI', system-ui, sans-serif";
+  g.fillText("HungDam_TraiTim", c.width / 2, 770);
+  return c;
+}
+async function downloadQr() {
+  const c = buildQrImage();
+  if (!c) return toast("Chưa có mã QR để tải", 2500);
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  const file = new File([blob], "traitim-qr.png", { type: "image/png" });
+  // điện thoại: mở bảng chia sẻ để lưu vào thư viện ảnh / gửi đi
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "HungDam_TraiTim" }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  // máy tính hoặc trình duyệt không hỗ trợ chia sẻ file: tải thẳng về
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "traitim-qr.png";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast("Đã tải ảnh QR về máy", 2500);
+}
+document.getElementById("dlBtn").onclick = downloadQr;
 document.getElementById("qrBtn").onclick = async () => {
   applyForm();
   if (!location.protocol.startsWith("http")) return status("Tạo QR chỉ dùng được khi chạy trên web (Vercel).");
