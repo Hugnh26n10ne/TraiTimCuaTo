@@ -71,7 +71,7 @@ const ORBIT_RADIUS = 560;                // bán kính vòng xoay 3D (px)
 const ORBIT_TILT = 0.24;                 // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
 const ORBIT_SPEED = 0.45;                // tốc độ xoay trung bình (rad/giây)
 const ORBIT_EASE = 0.65;                 // 0 = đều; càng gần 1 ảnh càng chậm lại khi ra phía trước và vút nhanh khi ra sau
-const SOUND_VOLUME = 0.8;                // âm lượng tiếng tim đập (0..1)
+const SOUND_VOLUME = 1.0;                // âm lượng tiếng tim đập (0..1)
 const PERSPECTIVE = 1400;                // càng nhỏ, hiệu ứng xa gần càng mạnh
 const PHOTO_W = 130, PHOTO_H = 168;      // kích thước thẻ ảnh (px)
 const PHOTO_RADIUS = 14;                 // bo góc thẻ ảnh
@@ -305,23 +305,32 @@ async function loadAlbum(id) {
 let audioCtx = null, soundOn = false;
 const soundBtn = document.getElementById("soundBtn");
 
+let master = null;                                 // tầng khuếch đại chung + nén để to mà không rè
+function getMaster() {
+  if (master) return master;
+  const comp = audioCtx.createDynamicsCompressor();
+  comp.threshold.value = -12; comp.knee.value = 20; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
+  master = audioCtx.createGain(); master.gain.value = 2.2 * SOUND_VOLUME;
+  master.connect(comp); comp.connect(audioCtx.destination);
+  return master;
+}
 function thump(when, freq, gain, dur) {           // một tiếng "thụp" trầm
   const o = audioCtx.createOscillator(), g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
   o.type = "sine";
   o.frequency.setValueAtTime(freq, when);
-  o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * 0.45), when + dur);
-  f.type = "lowpass"; f.frequency.value = 180;
+  o.frequency.exponentialRampToValueAtTime(Math.max(18, freq * 0.4), when + dur);
+  f.type = "lowpass"; f.frequency.value = 120; f.Q.value = 1.2;
   g.gain.setValueAtTime(0.0001, when);
-  g.gain.exponentialRampToValueAtTime(gain, when + 0.012);
+  g.gain.exponentialRampToValueAtTime(gain, when + 0.015);
   g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-  o.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  o.connect(f); f.connect(g); g.connect(getMaster());
   o.start(when); o.stop(when + dur + 0.05);
 }
-function playHeartbeat() {                         // "lub" rồi "dub" nhẹ hơn sau 0.14s
+function playHeartbeat() {                         // "lub" rồi "dub" nhẹ hơn sau 0.15s
   if (!soundOn || !audioCtx || audioCtx.state !== "running") return;
   const t = audioCtx.currentTime + 0.01;
-  thump(t, 62, SOUND_VOLUME, 0.22);
-  thump(t + 0.14, 54, SOUND_VOLUME * 0.6, 0.18);
+  thump(t, 48, 1.0, 0.30);
+  thump(t + 0.15, 42, 0.65, 0.26);
 }
 async function setSound(on) {
   if (on) {
