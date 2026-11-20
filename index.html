@@ -159,6 +159,8 @@ function addImage(src, url = null) {
   });
 }
 
+const cardFit = () => FIT * (innerWidth < 600 ? 0.72 : 1);   // điện thoại: thẻ ảnh nhỏ bớt để không chồng nhau
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -167,7 +169,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function layoutPhotos(time) {
   // bán kính vòng: không cho ảnh tràn khỏi mép màn hình (quan trọng trên điện thoại)
-  const n = photos.length, out = [], R = Math.min(ORBIT_RADIUS * FIT, innerWidth / 2 - PHOTO_W * FIT * (innerWidth < 600 ? 1.1 : 0.65));
+  const n = photos.length, out = [], R = Math.min(ORBIT_RADIUS * FIT, innerWidth / 2 - PHOTO_W * cardFit() * 0.8);
   const RZ = R * ORBIT_DEPTH;                       // bán kính theo chiều sâu (elip ngang)
   for (let i = 0; i < n; i++) {
     const t = time * ORBIT_SPEED + (i / n) * Math.PI * 2;
@@ -185,7 +187,7 @@ function layoutPhotos(time) {
 }
 
 function drawCard(ctx, p) {
-  const f = p.scale * FIT, w = PHOTO_W * f, h = PHOTO_H * f, r = PHOTO_RADIUS * f;
+  const f = p.scale * cardFit(), w = PHOTO_W * f, h = PHOTO_H * f, r = PHOTO_RADIUS * f;
   const depth = (p.z + p.R) / (2 * p.R);
   const x = p.x - w / 2, y = p.y - h / 2;
   ctx.save();
