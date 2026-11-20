@@ -19,6 +19,10 @@
     }
     #bar button:hover, #bar button:active { opacity: 1; background: rgba(247,96,112,.25); }
     #bar button.on { opacity: 1; background: rgba(247,96,112,.35); color: #fff; }
+    @media (max-width: 600px) {
+      #bar { gap: 6px; padding: 0 8px; flex-wrap: wrap; }
+      #bar button { padding: 8px 12px; font-size: 13px; }
+    }
     #file { display: none; }
     #toast {
       position: fixed; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
@@ -67,8 +71,9 @@
 // ====== CẤU HÌNH ======
 const HEART_COLOR = "#f76070";          // màu trái tim
 const HEART_SCALE = 1.6;                 // độ to của trái tim (1 = bằng bản Python)
-const ORBIT_RADIUS = 560;                // bán kính vòng xoay 3D (px)
-const ORBIT_TILT = 0.24;                 // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
+const ORBIT_RADIUS = 600;                // bán kính ngang của vòng elip (px)
+const ORBIT_DEPTH = 0.4;                 // độ sâu so với chiều ngang (1 = tròn, càng nhỏ elip càng dẹt)
+const ORBIT_TILT = 0.7;                  // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
 const ORBIT_SPEED = 0.45;                // tốc độ xoay trung bình (rad/giây)
 const ORBIT_EASE = 0.65;                 // 0 = đều; càng gần 1 ảnh càng chậm lại khi ra phía trước và vút nhanh khi ra sau
 const SOUND_VOLUME = 1.0;                // âm lượng tiếng tim đập (0..1)
@@ -162,17 +167,18 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function layoutPhotos(time) {
   // bán kính vòng: không cho ảnh tràn khỏi mép màn hình (quan trọng trên điện thoại)
-  const n = photos.length, out = [], R = Math.min(ORBIT_RADIUS * FIT, innerWidth / 2 - PHOTO_W * FIT * 0.65);
+  const n = photos.length, out = [], R = Math.min(ORBIT_RADIUS * FIT, innerWidth / 2 - PHOTO_W * FIT * (innerWidth < 600 ? 1.1 : 0.65));
+  const RZ = R * ORBIT_DEPTH;                       // bán kính theo chiều sâu (elip ngang)
   for (let i = 0; i < n; i++) {
     const t = time * ORBIT_SPEED + (i / n) * Math.PI * 2;
     // a = t + E*cos(t): tốc độ góc = 1 - E*sin(t) -> chậm nhất ở phía trước (sin=1), nhanh nhất ở phía sau
     const a = t + ORBIT_EASE * Math.cos(t);
-    const x3 = R * Math.cos(a), z3 = R * Math.sin(a);     // z > 0: phía trước tim, z < 0: phía sau
-    const y3 = z3 * (innerWidth < 600 ? 0.95 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
+    const x3 = R * Math.cos(a), z3 = RZ * Math.sin(a);    // z > 0: phía trước tim, z < 0: phía sau
+    const y3 = z3 * (innerWidth < 600 ? 1.6 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
     const scale = PERSPECTIVE / (PERSPECTIVE - z3 * 0.9);
     // ẩn dần khi chạy ra sau tim: hiện rõ khi z > 0.15R, mất hẳn khi z < -0.15R
-    const visible = Math.max(0, Math.min(1, (z3 / R + 0.15) / 0.3));
-    if (visible > 0) out.push({ img: photos[i].img, x: CX + x3 * scale, y: CY + y3 * scale, z: z3, scale, visible, R });
+    const visible = Math.max(0, Math.min(1, (z3 / RZ + 0.15) / 0.3));
+    if (visible > 0) out.push({ img: photos[i].img, x: CX + x3 * scale, y: CY + y3 * scale, z: z3, scale, visible, R: RZ });
   }
   out.sort((p, q) => p.z - q.z);
   return out;
