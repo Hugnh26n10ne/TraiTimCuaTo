@@ -15,9 +15,10 @@ export default async function handler(req, res) {
     const messages = Array.isArray(body?.messages)
       ? body.messages.filter(m => typeof m === "string").map(m => m.trim().slice(0, 200)).filter(Boolean).slice(0, 30)
       : [];
-    if (!images.length && !messages.length) return res.status(400).json({ error: "Chưa có ảnh hoặc lời nhắn nào" });
+    const cover = typeof body?.cover === "string" && isBlobUrl(body.cover) ? body.cover : null;
+    if (!images.length && !messages.length && !cover) return res.status(400).json({ error: "Chưa có ảnh hoặc lời nhắn nào" });
     const id = randomBytes(5).toString("base64url");
-    await put(`albums/${id}.json`, JSON.stringify({ images, messages, created: Date.now() }), {
+    await put(`albums/${id}.json`, JSON.stringify({ images, messages, cover, created: Date.now() }), {
       access: "public", contentType: "application/json", addRandomSuffix: false,
     });
     return res.status(200).json({ id });
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
     if (!blobs.length) return res.status(404).json({ error: "Không tìm thấy album" });
     const data = await (await fetch(blobs[0].url)).json();
     res.setHeader("Cache-Control", "public, max-age=300");
-    return res.status(200).json({ images: data.images || [], messages: data.messages || [] });
+    return res.status(200).json({ images: data.images || [], messages: data.messages || [], cover: data.cover || null });
   }
 
   res.status(405).json({ error: "Method not allowed" });

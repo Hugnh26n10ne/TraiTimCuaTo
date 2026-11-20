@@ -23,7 +23,7 @@
       #bar { gap: 6px; padding: 0 8px; flex-wrap: wrap; }
       #bar button { padding: 8px 12px; font-size: 13px; }
     }
-    #file { display: none; }
+    #file, #coverFile { display: none; }
     body.viewer #bar { display: none; }               /* người xem qua link QR không thấy nút */
     #msgModal textarea {
       width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical; font: 15px/1.5 system-ui, sans-serif;
@@ -53,11 +53,13 @@
 
 <div id="bar">
   <button id="msgBtn">✎ Lời nhắn</button>
+  <button id="coverBtn">🖼 Ảnh nền</button>
   <button id="addBtn">+ Thêm ảnh</button>
   <button id="qrBtn">Tạo QR</button>
   <button id="soundBtn" title="Bật/tắt tiếng tim đập">🔇 Âm thanh</button>
 </div>
 <input id="file" type="file" accept="image/*" multiple>
+<input id="coverFile" type="file" accept="image/*">
 <div id="toast"></div>
 
 <div id="msgModal" class="modal">
@@ -109,8 +111,18 @@ const DEFAULT_MESSAGES = [               // lời nhắn mặc định (người
 ];
 const TEXT_IN = 900, TEXT_HOLD = 1000, TEXT_OUT = 700;   // ms: chữ hiện dần, giữ 1 giây, mờ đi
 const TEXT_COLOR = "#ffd1d9";            // màu chữ
-const GROW_MS = 1800;                    // thời gian trái tim lớn dần từ bé xíu (ms)
-const PHOTOS_FADE_MS = 1200;             // ảnh hiện dần sau khi tim xuất hiện (ms)
+const COVER_IMAGE = "cover.jpg";         // ảnh nền (cổ đến ngực) đặt cạnh index.html; không có file thì bỏ qua pha zoom
+const COVER_FOCUS_X = 0.42, COVER_FOCUS_Y = 0.45;   // vị trí trái tim trên ảnh nền (tỉ lệ 0..1 theo chiều ngang/dọc)
+const COVER_FADE_IN_MS = 900;            // ảnh nền hiện dần
+const COVER_HOLD_MS = 900;               // đứng yên trước khi zoom
+const COVER_ZOOM_MS = 3600;              // thời gian zoom vào ngực
+const COVER_ZOOM = 3.2;                  // zoom tối đa (lần)
+const COVER_FADE_OUT_MS = 1000;          // ảnh nền chìm vào đen khi tim xuất hiện
+const GLOW_RGB = "255, 45, 80";          // màu quầng đỏ
+const EMERGE_MS = 3200;                  // tim đập lớn dần từ bé tới cỡ mặc định (4 nhịp)
+const PHOTOS_DELAY_MS = 3000;            // tim ổn định bao lâu thì ảnh thẻ mới chạy
+const PHOTOS_FADE_MS = 1200;             // ảnh thẻ hiện dần (ms)
+const COVER_MAX_SIDE = 1600;             // ảnh nền tải lên thu về cạnh dài này
 // ======================
 
 // ---- Trái tim: port 1:1 từ HungDam_TraiTim.py ----
@@ -258,12 +270,12 @@ function toast(msg, ms = 2500) {
 }
 
 // ---- Thu nhỏ ảnh trước khi tải lên ----
-function compressImage(file) {
+function compressImage(file, maxSide = UPLOAD_MAX_SIDE) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      const k = Math.min(1, UPLOAD_MAX_SIDE / Math.max(img.width, img.height));
+      const k = Math.min(1, maxSide / Math.max(img.width, img.height));
       const c = document.createElement("canvas");
       c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
@@ -300,13 +312,81 @@ document.getElementById("msgSaveBtn").onclick = () => {
   startIntro();
 };
 
-// ---- Màn mở đầu: chữ -> tim lớn dần -> tim đập ----
-const intro = { phase: "wait", t0: 0 };                       // wait | text | grow | beat
+// ---- Ảnh nền (cổ đến ngực) ----
+let coverImg = null, coverUrl = null;                         // coverUrl = link trên server (để lưu vào album)
+function setCover(src, url = null) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => { coverImg = img; coverUrl = url; resolve(true); };
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+}
+const coverInput = document.getElementById("coverFile");
+document.getElementById("coverBtn").onclick = () => coverInput.click();
+coverInput.onchange = async () => {
+  const f = coverInput.files[0]; coverInput.value = "";
+  if (!f) return;
+  try {
+    const small = await compressImage(f, COVER_MAX_SIDE);
+    await setCover(URL.createObjectURL(small));
+    if (location.protocol.startsWith("http")) {
+      toast("Đang tải ảnh nền lên...", 0);
+      coverUrl = await uploadBlob(small, "cover.jpg");
+      toast("Đã đặt ảnh nền.", 2000);
+    } else toast("Đã đặt ảnh nền (tải lên server chỉ dùng được trên web).", 3000);
+  } catch (e) { console.error(e); toast("Không đặt được ảnh nền: " + e.message, 4000); }
+  startIntro();
+};
+
+// ---- Màn mở đầu: chữ -> (zoom ảnh nền) -> quầng đỏ, tim đập lớn dần -> tim đập -> ảnh thẻ ----
+const intro = { phase: "wait", t0: 0 };                       // wait | text | cover | emerge | beat
 let photosAlpha = 0;
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const easeInOut = u => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+const easeOutCubic = u => 1 - Math.pow(1 - u, 3);
 function startIntro() { intro.phase = "text"; intro.t0 = null; photosAlpha = 0; }   // t0 lấy từ khung hình đầu tiên
-function startGrow(now) { intro.phase = "grow"; intro.t0 = now; }
-function startBeat(now) { intro.phase = "beat"; intro.t0 = now; frame = 3; lastHeart = now; playHeartbeat(); }
-const easeOutBack = u => { const c = 1.4; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+function startGrow(now) { if (coverImg) { intro.phase = "cover"; intro.t0 = now; } else startEmerge(now); }
+function startEmerge(now) { intro.phase = "emerge"; intro.t0 = now; frame = 3; lastHeart = now; playHeartbeat(); }
+function startBeat(now) { intro.phase = "beat"; intro.t0 = now; }
+
+// vẽ ảnh nền phủ kín màn và zoom dần vào tiêu điểm (vị trí tim); trả về tiến độ zoom 0..1
+function drawCover(ctx, now, alpha = 1) {
+  const img = coverImg, W = canvas.width, H = canvas.height;
+  const el = Math.max(0, now - intro.t0);
+  const fadeIn = clamp01(el / COVER_FADE_IN_MS);
+  const u = intro.phase === "cover" ? clamp01((el - COVER_HOLD_MS) / COVER_ZOOM_MS) : 1;
+  const e = easeInOut(u);
+  const base = Math.max(W / img.width, H / img.height);          // phủ kín màn
+  const sc = base * (1 + (COVER_ZOOM - 1) * e);
+  const fx = img.width * COVER_FOCUS_X, fy = img.height * COVER_FOCUS_Y;
+  const natX = W / 2 + (fx - img.width / 2) * base, natY = H / 2 + (fy - img.height / 2) * base;  // tiêu điểm khi chưa zoom
+  const tx = natX + (W / 2 - natX) * e, ty = natY + (H / 2 - natY) * e;                            // kéo dần về tâm màn
+  ctx.save();
+  ctx.globalAlpha = alpha * fadeIn;
+  ctx.drawImage(img, tx - fx * sc, ty - fy * sc, img.width * sc, img.height * sc);
+  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.12, W / 2, H / 2, Math.max(W, H) * 0.7);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, `rgba(0,0,0,${0.35 + 0.6 * e})`);   // tối dần viền
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  return u;
+}
+// quầng đỏ ở tâm màn
+function drawGlow(ctx, intensity, radius) {
+  if (intensity <= 0) return;
+  const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, radius);
+  g.addColorStop(0, `rgba(${GLOW_RGB}, ${0.9 * intensity})`);
+  g.addColorStop(0.35, `rgba(${GLOW_RGB}, ${0.35 * intensity})`);
+  g.addColorStop(1, `rgba(${GLOW_RGB}, 0)`);
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g;
+  ctx.fillRect(CX - radius, CY - radius, radius * 2, radius * 2); ctx.restore();
+}
+function tickHeart(now) {                                       // tim đập cùng nhịp 160ms như bản Python
+  if (now - lastHeart >= 160) {
+    frame++; lastHeart = now;
+    if (frame % 5 === 3) playHeartbeat();                       // mỗi 5 khung (0.8s) tim nở ra một lần -> "lub-dub"
+  }
+}
 
 function wrapText(ctx, text, maxW) {
   const words = text.split(/\s+/), lines = []; let line = "";
@@ -382,7 +462,7 @@ document.getElementById("qrBtn").onclick = async () => {
   if (photos.length && urls.length < photos.length) return toast("Có ảnh chưa tải lên được server, hãy thử thêm lại ảnh đó.", 3500);
   try {
     toast("Đang tạo link...", 0);
-    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls, messages: msgs }) });
+    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls, messages: msgs, cover: coverUrl }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "album " + r.status);
     const { id } = await r.json();
     toastEl.classList.remove("show");
@@ -407,6 +487,7 @@ async function loadAlbum(id) {
     if (!r.ok) throw new Error("album " + r.status);
     const data = await r.json();
     messages = Array.isArray(data.messages) ? data.messages : [];
+    if (data.cover) await setCover(data.cover, data.cover);
     if (Array.isArray(data.images)) await Promise.all(data.images.map(u => addImage(u, u)));
   } catch (e) { console.error(e); messages = []; toast("Không tải được nội dung của link này.", 4000); }
   startIntro();
@@ -438,7 +519,7 @@ function thump(when, freq, gain, dur) {           // một tiếng "thụp" tr�
   o.start(when); o.stop(when + dur + 0.05);
 }
 function playHeartbeat() {                         // "lub" rồi "dub" nhẹ hơn sau 0.15s
-  if (!soundOn || !audioCtx || audioCtx.state !== "running" || intro.phase !== "beat") return;
+  if (!soundOn || !audioCtx || audioCtx.state !== "running" || (intro.phase !== "beat" && intro.phase !== "emerge")) return;
   const t = audioCtx.currentTime + 0.01;
   thump(t, 48, 1.0, 0.30);
   thump(t + 0.15, 42, 0.65, 0.26);
@@ -474,7 +555,8 @@ addEventListener("resize", resize); resize();
 
 const heart = new Heart();
 let frame = 0, lastHeart = 0;
-if (albumId) loadAlbum(albumId); else startIntro();           // link QR: tải nội dung xong mới chạy; không thì chạy luôn
+if (albumId) loadAlbum(albumId);                              // link QR: tải nội dung xong mới chạy
+else setCover(COVER_IMAGE).then(startIntro);                  // người tạo: thử nạp ảnh nền mặc định rồi chạy
 
 function loop(now) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -482,22 +564,34 @@ function loop(now) {
   if (intro.t0 === null) intro.t0 = now;                       // đồng bộ mốc thời gian với đồng hồ khung hình
   if (intro.phase === "text") { drawText(ctx, now); return requestAnimationFrame(loop); }
 
+  const el = Math.max(0, now - intro.t0);
+  const glowR = Math.min(canvas.width, canvas.height) * 0.45;
+
+  if (intro.phase === "cover") {                                // zoom vào ngực, gần tới thì quầng đỏ bắt đầu lóe
+    const u = drawCover(ctx, now);
+    if (u > 0.7) { const g = (u - 0.7) / 0.3; drawGlow(ctx, g * g * 0.8 * (0.85 + 0.15 * Math.sin(now / 90)), glowR * 0.6); }
+    if (el >= COVER_HOLD_MS + COVER_ZOOM_MS + 150) startEmerge(now);
+    return requestAnimationFrame(loop);
+  }
+
   let grow = 1;
-  if (intro.phase === "grow") {                                 // tim lớn dần từ bé xíu, hơi nảy nhẹ khi tới cỡ thật
-    const u = Math.max(0, Math.min(1, (now - intro.t0) / GROW_MS));
-    grow = Math.max(0.02, easeOutBack(u));
+  if (intro.phase === "emerge") {                               // quầng đỏ lóe lên, tim đập lớn dần tới cỡ mặc định
+    tickHeart(now);
+    if (coverImg) drawCover(ctx, now, 1 - clamp01(el / COVER_FADE_OUT_MS));   // ảnh nền chìm dần vào đen
+    const u = clamp01(el / EMERGE_MS);
+    grow = Math.max(0.04, easeOutCubic(u));
+    const flash = Math.max(0, 1 - el / 900);                                   // lóe mạnh rồi tắt dần
+    const pulse = 0.35 * (1 - u) * Math.max(0, Math.sin((frame % 5) / 5 * Math.PI * 2 - Math.PI / 2) );  // nhấp theo nhịp
+    drawGlow(ctx, flash + pulse, glowR * (0.5 + 0.5 * grow));
     if (u >= 1) startBeat(now);
   }
-  if (intro.phase === "beat") {
-    if (now - lastHeart >= 160) {                               // tim đập cùng nhịp 160ms như bản Python
-      frame++; lastHeart = now;
-      if (frame % 5 === 3) playHeartbeat();                     // mỗi 5 khung (0.8s) tim nở ra một lần -> phát "lub-dub"
-    }
-    photosAlpha = Math.min(1, (now - intro.t0) / PHOTOS_FADE_MS);
+  if (intro.phase === "beat") {                                 // giữ cỡ mặc định, đập đều; vài giây sau ảnh thẻ chạy
+    tickHeart(now);
+    photosAlpha = clamp01((el - PHOTOS_DELAY_MS) / PHOTOS_FADE_MS);
   }
   const cards = photosAlpha > 0 ? layoutPhotos(now / 1000) : [];
   for (const p of cards) if (p.z < 0) drawCard(ctx, p);        // phần còn mờ ở hai bên
-  heart.render(ctx, intro.phase === "beat" ? frame : 3, grow);
+  heart.render(ctx, frame, grow);
   for (const p of cards) if (p.z >= 0) drawCard(ctx, p);       // ảnh phía trước tim
   requestAnimationFrame(loop);
 }
