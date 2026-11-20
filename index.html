@@ -69,8 +69,8 @@ const ORBIT_RADIUS = 560;                // bán kính vòng xoay 3D (px)
 const ORBIT_TILT = 0.24;                 // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
 const ORBIT_SPEED = 0.35;                // tốc độ xoay (rad/giây)
 const PERSPECTIVE = 1400;                // càng nhỏ, hiệu ứng xa gần càng mạnh
-const PHOTO_W = 96, PHOTO_H = 124;       // kích thước thẻ ảnh (px)
-const PHOTO_RADIUS = 12;                 // bo góc thẻ ảnh
+const PHOTO_W = 130, PHOTO_H = 168;      // kích thước thẻ ảnh (px)
+const PHOTO_RADIUS = 14;                 // bo góc thẻ ảnh
 const SHADOW_COLOR = "rgba(247, 96, 112, 0.75)"; // màu bóng đổ dưới ảnh
 const SHADOW_BLUR = 28;                  // độ nhoè của bóng
 const SHADOW_OFFSET = 18;                // bóng lệch xuống dưới bao nhiêu px
@@ -157,11 +157,12 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function layoutPhotos(time) {
-  const n = photos.length, out = [], R = ORBIT_RADIUS * FIT;
+  // bán kính vòng: không cho ảnh tràn khỏi mép màn hình (quan trọng trên điện thoại)
+  const n = photos.length, out = [], R = Math.min(ORBIT_RADIUS * FIT, innerWidth / 2 - PHOTO_W * FIT * 0.65);
   for (let i = 0; i < n; i++) {
     const a = time * ORBIT_SPEED + (i / n) * Math.PI * 2;
     const x3 = R * Math.cos(a), z3 = R * Math.sin(a);     // z > 0: phía trước tim, z < 0: phía sau
-    const y3 = z3 * (innerWidth < 600 ? 0.5 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
+    const y3 = z3 * (innerWidth < 600 ? 0.95 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
     const scale = PERSPECTIVE / (PERSPECTIVE - z3 * 0.9);
     // ẩn dần khi chạy ra sau tim: hiện rõ khi z > 0.15R, mất hẳn khi z < -0.15R
     const visible = Math.max(0, Math.min(1, (z3 / R + 0.15) / 0.3));
