@@ -71,7 +71,9 @@ const ORBIT_SPEED = 0.35;                // tốc độ xoay (rad/giây)
 const PERSPECTIVE = 1400;                // càng nhỏ, hiệu ứng xa gần càng mạnh
 const PHOTO_W = 96, PHOTO_H = 124;       // kích thước thẻ ảnh (px)
 const PHOTO_RADIUS = 12;                 // bo góc thẻ ảnh
-const PHOTO_BORDER = "#ffb3c1";          // màu viền ảnh
+const SHADOW_COLOR = "rgba(247, 96, 112, 0.75)"; // màu bóng đổ dưới ảnh
+const SHADOW_BLUR = 28;                  // độ nhoè của bóng
+const SHADOW_OFFSET = 18;                // bóng lệch xuống dưới bao nhiêu px
 const UPLOAD_MAX_SIDE = 900;             // ảnh tải lên được thu nhỏ về cạnh dài tối đa này (px)
 // ======================
 
@@ -172,17 +174,22 @@ function layoutPhotos(time) {
 function drawCard(ctx, p) {
   const f = p.scale * FIT, w = PHOTO_W * f, h = PHOTO_H * f, r = PHOTO_RADIUS * f;
   const depth = (p.z + p.R) / (2 * p.R);
+  const x = p.x - w / 2, y = p.y - h / 2;
   ctx.save();
   ctx.globalAlpha = (0.5 + 0.5 * depth) * p.visible;
-  ctx.shadowColor = HEART_COLOR; ctx.shadowBlur = 10 + 20 * depth;
-  roundRect(ctx, p.x - w / 2 - 3, p.y - h / 2 - 3, w + 6, h + 6, r + 3);
-  ctx.fillStyle = PHOTO_BORDER; ctx.fill();
-  ctx.shadowBlur = 0;
-  roundRect(ctx, p.x - w / 2, p.y - h / 2, w, h, r); ctx.clip();
+  // bóng đổ xuống dưới ảnh (quầng hồng mờ, vì nền đen nên bóng đen sẽ không thấy)
+  ctx.shadowColor = SHADOW_COLOR;
+  ctx.shadowBlur = SHADOW_BLUR * f;
+  ctx.shadowOffsetY = SHADOW_OFFSET * f;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fillStyle = "#000"; ctx.fill();
+  ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  // ảnh, không viền
+  roundRect(ctx, x, y, w, h, r); ctx.clip();
   const img = p.img, ar = PHOTO_W / PHOTO_H;
   let sw = img.width, sh = img.height;
   if (sw / sh > ar) sw = sh * ar; else sh = sw / ar;
-  ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, p.x - w / 2, p.y - h / 2, w, h);
+  ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h);
   ctx.restore();
 }
 
