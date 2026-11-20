@@ -22,4 +22,4 @@ Sau đó mở link `https://<tên-app>.vercel.app` trên điện thoại:
 ## Chỉnh hiệu ứng
 
 Các hằng số ở đầu phần `<script>` trong `index.html`: `HEART_SCALE` (độ to tim), `HEART_COLOR`, `ORBIT_RADIUS`, `ORBIT_SPEED`, `ORBIT_TILT`, `PHOTO_W`/`PHOTO_H`.
-Ảnh mặc định nằm trong `images/1.jpg` đến `8.jpg`, thay bằng ảnh của bạn cùng tên là được.
+Lúc mở trang chỉ có trái tim, thẻ ảnh chỉ xuất hiện khi bạn bấm Thêm ảnh hoặc mở link QR có ảnh.

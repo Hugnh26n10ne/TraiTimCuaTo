@@ -65,10 +65,6 @@
 // ====== CẤU HÌNH ======
 const HEART_COLOR = "#f76070";          // màu trái tim
 const HEART_SCALE = 1.6;                 // độ to của trái tim (1 = bằng bản Python)
-const DEFAULT_IMAGES = [                 // ảnh mặc định khi chưa thêm ảnh nào (thư mục images/)
-  "images/1.jpg", "images/2.jpg", "images/3.jpg", "images/4.jpg",
-  "images/5.jpg", "images/6.jpg", "images/7.jpg", "images/8.jpg",
-];
 const ORBIT_RADIUS = 560;                // bán kính vòng xoay 3D (px)
 const ORBIT_TILT = 0.24;                 // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
 const ORBIT_SPEED = 0.35;                // tốc độ xoay (rad/giây)
@@ -141,8 +137,7 @@ class Heart {
 }
 
 // ---- Ảnh chạy quanh tim (vòng 3D nằm ngang) ----
-let photos = [];            // { img, url }  url = link trên server (nếu đã tải lên)
-let usingDefaults = true;   // đang hiển thị ảnh mẫu
+let photos = [];            // { img, url }  url = link trên server (nếu đã tải lên). Rỗng = chỉ hiện trái tim
 
 function addImage(src, url = null) {
   return new Promise(resolve => {
@@ -152,7 +147,6 @@ function addImage(src, url = null) {
     img.src = src;
   });
 }
-function clearDefaults() { if (usingDefaults) { photos = []; usingDefaults = false; } }
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -230,7 +224,6 @@ document.getElementById("addBtn").onclick = () => fileInput.click();
 fileInput.onchange = async () => {
   const files = [...fileInput.files]; fileInput.value = "";
   if (!files.length) return;
-  clearDefaults();
   const isHosted = location.protocol.startsWith("http");
   let done = 0, failed = 0;
   for (const f of files) {
@@ -262,10 +255,8 @@ function showShare(url) {
 document.getElementById("qrBtn").onclick = async () => {
   if (!location.protocol.startsWith("http")) return toast("Tạo QR chỉ dùng được khi chạy trên web (Vercel).", 3500);
   const urls = photos.map(p => p.url).filter(Boolean);
-  if (usingDefaults || !urls.length) {
-    // chưa có ảnh riêng: chia sẻ trang gốc với ảnh mẫu
-    return showShare(location.origin + location.pathname);
-  }
+  if (!photos.length) return toast("Hãy thêm ảnh trước rồi mới tạo QR.", 3000);
+  if (!urls.length) return toast("Ảnh chưa tải lên được server nên chưa tạo được QR.", 3500);
   try {
     toast("Đang tạo link...", 0);
     const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls }) });
@@ -292,13 +283,8 @@ async function loadAlbum(id) {
     const r = await fetch("/api/album?id=" + encodeURIComponent(id));
     if (!r.ok) throw new Error("album " + r.status);
     const data = await r.json();
-    if (Array.isArray(data.images) && data.images.length) {
-      clearDefaults();
-      await Promise.all(data.images.map(u => addImage(u, u)));
-      return;
-    }
-  } catch (e) { console.error(e); toast("Không tải được ảnh của link này, hiển thị ảnh mẫu.", 4000); }
-  if (!photos.length) DEFAULT_IMAGES.forEach(u => addImage(u));
+    if (Array.isArray(data.images)) await Promise.all(data.images.map(u => addImage(u, u)));
+  } catch (e) { console.error(e); toast("Không tải được ảnh của link này.", 4000); }
 }
 
 // ---- Vòng lặp ----
@@ -311,7 +297,7 @@ function resize() {
 addEventListener("resize", resize); resize();
 
 const albumId = new URLSearchParams(location.search).get("a");
-if (albumId) loadAlbum(albumId); else DEFAULT_IMAGES.forEach(u => addImage(u));
+if (albumId) loadAlbum(albumId);   // không có link album thì chỉ hiện trái tim
 
 const heart = new Heart();
 let frame = 0, lastHeart = 0;
