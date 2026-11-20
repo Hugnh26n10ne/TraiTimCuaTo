@@ -24,28 +24,35 @@
       #bar button { padding: 8px 12px; font-size: 13px; }
     }
     #file { display: none; }
+    body.viewer #bar { display: none; }               /* người xem qua link QR không thấy nút */
+    #msgModal textarea {
+      width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical; font: 15px/1.5 system-ui, sans-serif;
+      border: 1px solid #f3c1c9; border-radius: 10px; padding: 10px; margin-bottom: 6px; color: #222;
+    }
+    #msgModal .hint { font-size: 12px; color: #777; margin-bottom: 12px; text-align: left; }
     #toast {
       position: fixed; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,.75); color: #ffb3c1; border: 1px solid #f76070; border-radius: 20px;
       padding: 8px 16px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; max-width: 90vw; text-align: center;
     }
     #toast.show { opacity: 1; }
-    #modal { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; padding: 16px; }
-    #modal.show { display: flex; }
-    #modal .box { background: #fff; color: #222; border-radius: 16px; padding: 20px; width: min(92vw, 340px); text-align: center; }
-    #modal h3 { margin: 0 0 12px; color: #f76070; font-size: 18px; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; padding: 16px; }
+    .modal.show { display: flex; }
+    .modal .box { background: #fff; color: #222; border-radius: 16px; padding: 20px; width: min(92vw, 340px); text-align: center; }
+    .modal h3 { margin: 0 0 12px; color: #f76070; font-size: 18px; }
     #qr { display: flex; justify-content: center; margin: 0 auto 12px; }
     #qr img, #qr canvas { border-radius: 8px; }
     #link { font-size: 12px; word-break: break-all; color: #555; background: #f6f6f6; border-radius: 8px; padding: 8px; margin-bottom: 12px; }
-    #modal .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-    #modal .row button { padding: 9px 14px; border: none; border-radius: 20px; background: #f76070; color: #fff; font-size: 14px; cursor: pointer; }
-    #modal .row button.ghost { background: #eee; color: #444; }
+    .modal .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .modal .row button { padding: 9px 14px; border: none; border-radius: 20px; background: #f76070; color: #fff; font-size: 14px; cursor: pointer; }
+    .modal .row button.ghost { background: #eee; color: #444; }
   </style>
 </head>
 <body>
 <canvas id="heart"></canvas>
 
 <div id="bar">
+  <button id="msgBtn">✎ Lời nhắn</button>
   <button id="addBtn">+ Thêm ảnh</button>
   <button id="qrBtn">Tạo QR</button>
   <button id="soundBtn" title="Bật/tắt tiếng tim đập">🔇 Âm thanh</button>
@@ -53,7 +60,19 @@
 <input id="file" type="file" accept="image/*" multiple>
 <div id="toast"></div>
 
-<div id="modal">
+<div id="msgModal" class="modal">
+  <div class="box">
+    <h3>Lời nhắn mở đầu</h3>
+    <textarea id="msgText" placeholder="Mỗi dòng là một câu, các câu sẽ lần lượt hiện lên trước khi trái tim xuất hiện"></textarea>
+    <div class="hint">Mỗi dòng một câu. Để trống thì trái tim hiện ngay.</div>
+    <div class="row">
+      <button id="msgSaveBtn">Lưu &amp; xem lại</button>
+      <button id="msgCloseBtn" class="ghost">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="modal">
   <div class="box">
     <h3>Gửi trái tim này cho người ấy</h3>
     <div id="qr"></div>
@@ -84,6 +103,14 @@ const REFLECT_HEIGHT = 0.45;             // chiều cao phản chiếu so với 
 const REFLECT_ALPHA = 0.3;               // độ rõ của phản chiếu ở sát mép ảnh
 const REFLECT_GAP = 3;                   // khe hở giữa ảnh và mặt nước (px)
 const UPLOAD_MAX_SIDE = 900;             // ảnh tải lên được thu nhỏ về cạnh dài tối đa này (px)
+const DEFAULT_MESSAGES = [               // lời nhắn mặc định (người tạo sửa bằng nút "Lời nhắn")
+  "Gửi đến người mình thương",
+  "Mỗi nhịp đập này là dành cho bạn",
+];
+const TEXT_IN = 900, TEXT_HOLD = 1000, TEXT_OUT = 700;   // ms: chữ hiện dần, giữ 1 giây, mờ đi
+const TEXT_COLOR = "#ffd1d9";            // màu chữ
+const GROW_MS = 1800;                    // thời gian trái tim lớn dần từ bé xíu (ms)
+const PHOTOS_FADE_MS = 1200;             // ảnh hiện dần sau khi tim xuất hiện (ms)
 // ======================
 
 // ---- Trái tim: port 1:1 từ HungDam_TraiTim.py ----
@@ -140,9 +167,9 @@ class Heart {
     for (const [px, py] of this.center.values()) { const [x, y] = Heart.pos(px, py, ratio); all.push([x, y, randint(1, 2)]); }
     this.frames[frame] = all;
   }
-  render(ctx, frame) {
+  render(ctx, frame, grow = 1) {
     ctx.fillStyle = HEART_COLOR;
-    const k = HEART_SCALE * FIT, oy = -26 * k;              // dịch lên để tâm hình nằm đúng giữa màn hình
+    const k = HEART_SCALE * FIT * grow, oy = -26 * k;       // dịch lên để tâm hình nằm đúng giữa màn hình
     for (const [x, y, s] of this.frames[frame % this.generateFrame]) ctx.fillRect(CX + x * k, CY + oy + y * k, s * k, s * k);
   }
 }
@@ -194,7 +221,7 @@ function drawCard(ctx, p) {
   let sw = img.width, sh = img.height;                       // cắt ảnh theo tỉ lệ thẻ (kiểu cover)
   if (sw / sh > ar) sw = sh * ar; else sh = sw / ar;
   const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
-  const alpha = (0.5 + 0.5 * depth) * p.visible;
+  const alpha = (0.5 + 0.5 * depth) * p.visible * photosAlpha;
 
   // ảnh chính, không viền, không bóng
   ctx.save();
@@ -254,6 +281,65 @@ async function uploadBlob(blob, name) {
   return (await r.json()).url;
 }
 
+// ---- Lời nhắn mở đầu ----
+const albumId = new URLSearchParams(location.search).get("a");
+const isViewer = !!albumId;                                   // mở từ link QR: chỉ xem, không có nút
+if (isViewer) document.body.classList.add("viewer");
+
+let messages = [...DEFAULT_MESSAGES];
+if (!isViewer) { try { const saved = JSON.parse(localStorage.getItem("hdt_messages")); if (Array.isArray(saved)) messages = saved; } catch {} }
+
+const msgModal = document.getElementById("msgModal"), msgText = document.getElementById("msgText");
+document.getElementById("msgBtn").onclick = () => { msgText.value = messages.join("\n"); msgModal.classList.add("show"); msgText.focus(); };
+document.getElementById("msgCloseBtn").onclick = () => msgModal.classList.remove("show");
+msgModal.addEventListener("click", e => { if (e.target === msgModal) msgModal.classList.remove("show"); });
+document.getElementById("msgSaveBtn").onclick = () => {
+  messages = msgText.value.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 30);
+  try { localStorage.setItem("hdt_messages", JSON.stringify(messages)); } catch {}
+  msgModal.classList.remove("show");
+  startIntro();
+};
+
+// ---- Màn mở đầu: chữ -> tim lớn dần -> tim đập ----
+const intro = { phase: "wait", t0: 0 };                       // wait | text | grow | beat
+let photosAlpha = 0;
+function startIntro() { intro.phase = "text"; intro.t0 = null; photosAlpha = 0; }   // t0 lấy từ khung hình đầu tiên
+function startGrow(now) { intro.phase = "grow"; intro.t0 = now; }
+function startBeat(now) { intro.phase = "beat"; intro.t0 = now; frame = 3; lastHeart = now; playHeartbeat(); }
+const easeOutBack = u => { const c = 1.4; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+
+function wrapText(ctx, text, maxW) {
+  const words = text.split(/\s+/), lines = []; let line = "";
+  for (const w of words) {
+    const test = line ? line + " " + w : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function drawText(ctx, now) {
+  const msgs = messages.filter(m => m.trim());
+  if (!msgs.length) return startGrow(now);
+  const per = TEXT_IN + TEXT_HOLD + TEXT_OUT, el = Math.max(0, now - intro.t0), i = Math.floor(el / per);
+  if (i >= msgs.length) return startGrow(now);
+  const lt = el - i * per;
+  let a, drift;
+  if (lt < TEXT_IN) { a = lt / TEXT_IN; drift = (1 - a) * 18; }
+  else if (lt < TEXT_IN + TEXT_HOLD) { a = 1; drift = 0; }
+  else { a = 1 - (lt - TEXT_IN - TEXT_HOLD) / TEXT_OUT; drift = -(1 - a) * 10; }
+  a = Math.max(0, Math.min(1, a));
+  const size = Math.round(Math.max(22, Math.min(46, innerWidth * 0.045)));
+  ctx.save();
+  ctx.globalAlpha = a * a;
+  ctx.fillStyle = TEXT_COLOR; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `500 ${size}px "Segoe UI", system-ui, -apple-system, sans-serif`;
+  ctx.shadowColor = HEART_COLOR; ctx.shadowBlur = 22;
+  const lines = wrapText(ctx, msgs[i], innerWidth * 0.82), lh = size * 1.4;
+  const y0 = CY + drift - (lines.length - 1) * lh / 2;
+  lines.forEach((l, k) => ctx.fillText(l, CX, y0 + k * lh));
+  ctx.restore();
+}
+
 // ---- Nút thêm ảnh ----
 const fileInput = document.getElementById("file");
 document.getElementById("addBtn").onclick = () => fileInput.click();
@@ -291,11 +377,12 @@ function showShare(url) {
 document.getElementById("qrBtn").onclick = async () => {
   if (!location.protocol.startsWith("http")) return toast("Tạo QR chỉ dùng được khi chạy trên web (Vercel).", 3500);
   const urls = photos.map(p => p.url).filter(Boolean);
-  if (!photos.length) return toast("Hãy thêm ảnh trước rồi mới tạo QR.", 3000);
-  if (!urls.length) return toast("Ảnh chưa tải lên được server nên chưa tạo được QR.", 3500);
+  const msgs = messages.filter(m => m.trim());
+  if (!photos.length && !msgs.length) return toast("Hãy thêm ảnh hoặc lời nhắn trước rồi mới tạo QR.", 3000);
+  if (photos.length && urls.length < photos.length) return toast("Có ảnh chưa tải lên được server, hãy thử thêm lại ảnh đó.", 3500);
   try {
     toast("Đang tạo link...", 0);
-    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls }) });
+    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls, messages: msgs }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "album " + r.status);
     const { id } = await r.json();
     toastEl.classList.remove("show");
@@ -319,8 +406,10 @@ async function loadAlbum(id) {
     const r = await fetch("/api/album?id=" + encodeURIComponent(id));
     if (!r.ok) throw new Error("album " + r.status);
     const data = await r.json();
+    messages = Array.isArray(data.messages) ? data.messages : [];
     if (Array.isArray(data.images)) await Promise.all(data.images.map(u => addImage(u, u)));
-  } catch (e) { console.error(e); toast("Không tải được ảnh của link này.", 4000); }
+  } catch (e) { console.error(e); messages = []; toast("Không tải được nội dung của link này.", 4000); }
+  startIntro();
 }
 
 // ---- Âm thanh tim đập (Web Audio, không cần file) ----
@@ -349,7 +438,7 @@ function thump(when, freq, gain, dur) {           // một tiếng "thụp" tr�
   o.start(when); o.stop(when + dur + 0.05);
 }
 function playHeartbeat() {                         // "lub" rồi "dub" nhẹ hơn sau 0.15s
-  if (!soundOn || !audioCtx || audioCtx.state !== "running") return;
+  if (!soundOn || !audioCtx || audioCtx.state !== "running" || intro.phase !== "beat") return;
   const t = audioCtx.currentTime + 0.01;
   thump(t, 48, 1.0, 0.30);
   thump(t + 0.15, 42, 0.65, 0.26);
@@ -383,20 +472,32 @@ function resize() {
 }
 addEventListener("resize", resize); resize();
 
-const albumId = new URLSearchParams(location.search).get("a");
-if (albumId) loadAlbum(albumId);   // không có link album thì chỉ hiện trái tim
-
 const heart = new Heart();
 let frame = 0, lastHeart = 0;
+if (albumId) loadAlbum(albumId); else startIntro();           // link QR: tải nội dung xong mới chạy; không thì chạy luôn
+
 function loop(now) {
-  if (now - lastHeart >= 160) {                                 // tim đập cùng nhịp 160ms như bản Python
-    frame++; lastHeart = now;
-    if (frame % 5 === 3) playHeartbeat();                       // mỗi 5 khung (0.8s) tim nở ra một lần -> phát "lub-dub"
-  }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const cards = layoutPhotos(now / 1000);
+  if (intro.phase === "wait") return requestAnimationFrame(loop);
+  if (intro.t0 === null) intro.t0 = now;                       // đồng bộ mốc thời gian với đồng hồ khung hình
+  if (intro.phase === "text") { drawText(ctx, now); return requestAnimationFrame(loop); }
+
+  let grow = 1;
+  if (intro.phase === "grow") {                                 // tim lớn dần từ bé xíu, hơi nảy nhẹ khi tới cỡ thật
+    const u = Math.max(0, Math.min(1, (now - intro.t0) / GROW_MS));
+    grow = Math.max(0.02, easeOutBack(u));
+    if (u >= 1) startBeat(now);
+  }
+  if (intro.phase === "beat") {
+    if (now - lastHeart >= 160) {                               // tim đập cùng nhịp 160ms như bản Python
+      frame++; lastHeart = now;
+      if (frame % 5 === 3) playHeartbeat();                     // mỗi 5 khung (0.8s) tim nở ra một lần -> phát "lub-dub"
+    }
+    photosAlpha = Math.min(1, (now - intro.t0) / PHOTOS_FADE_MS);
+  }
+  const cards = photosAlpha > 0 ? layoutPhotos(now / 1000) : [];
   for (const p of cards) if (p.z < 0) drawCard(ctx, p);        // phần còn mờ ở hai bên
-  heart.render(ctx, frame);
+  heart.render(ctx, intro.phase === "beat" ? frame : 3, grow);
   for (const p of cards) if (p.z >= 0) drawCard(ctx, p);       // ảnh phía trước tim
   requestAnimationFrame(loop);
 }

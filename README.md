@@ -16,8 +16,9 @@ Trái tim đập 3D của HungDam_TraiTim, có vòng ảnh xoay quanh, thêm ả
 
 Sau đó mở link `https://<tên-app>.vercel.app` trên điện thoại:
 
+- **Lời nhắn**: mỗi dòng một câu. Khi mở trang, các câu lần lượt hiện dần, giữ 1 giây rồi mờ đi; hết chữ thì trái tim lớn dần từ bé xíu rồi bắt đầu đập, ảnh hiện ra sau đó.
 - **+ Thêm ảnh**: chọn ảnh trong máy, ảnh được thu nhỏ rồi tải lên Blob.
-- **Tạo QR**: tạo link riêng dạng `?a=<id>` chứa đúng bộ ảnh vừa tải, hiện mã QR, có nút sao chép và chia sẻ.
+- **Tạo QR**: tạo link riêng dạng `?a=<id>` chứa lời nhắn và bộ ảnh vừa tải, hiện mã QR, có nút sao chép và chia sẻ. Người mở link QR chỉ xem, không thấy các nút.
 
 ## Chỉnh hiệu ứng
 
