@@ -1,264 +1,330 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
-<HTML>
- <HEAD>
-  <TITLE>HungDam_TraiTim</TITLE>
-  <META NAME="Generator" CONTENT="EditPlus">
-  <META NAME="Author" CONTENT="HungDam_TraiTim">
-  <META NAME="Keywords" CONTENT="">
-  <META NAME="Description" CONTENT="">
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HungDam_TraiTim</title>
+  <meta name="Author" content="HungDam_TraiTim">
+  <meta name="theme-color" content="#000000">
   <style>
-  html, body {
-  height: 100%;
-  padding: 0;
-  margin: 0;
-  background: #000;
-}
-canvas {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-}
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    canvas { display: block; background: #000; }
+    #bar {
+      position: fixed; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 10px;
+      pointer-events: none;
+    }
+    #bar button {
+      pointer-events: auto; padding: 10px 18px; border: 1px solid #f76070; border-radius: 24px;
+      background: rgba(0,0,0,.65); color: #ffb3c1; font-size: 15px; cursor: pointer; opacity: .75;
+    }
+    #bar button:hover, #bar button:active { opacity: 1; background: rgba(247,96,112,.25); }
+    #file { display: none; }
+    #toast {
+      position: fixed; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.75); color: #ffb3c1; border: 1px solid #f76070; border-radius: 20px;
+      padding: 8px 16px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; max-width: 90vw; text-align: center;
+    }
+    #toast.show { opacity: 1; }
+    #modal { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; padding: 16px; }
+    #modal.show { display: flex; }
+    #modal .box { background: #fff; color: #222; border-radius: 16px; padding: 20px; width: min(92vw, 340px); text-align: center; }
+    #modal h3 { margin: 0 0 12px; color: #f76070; font-size: 18px; }
+    #qr { display: flex; justify-content: center; margin: 0 auto 12px; }
+    #qr img, #qr canvas { border-radius: 8px; }
+    #link { font-size: 12px; word-break: break-all; color: #555; background: #f6f6f6; border-radius: 8px; padding: 8px; margin-bottom: 12px; }
+    #modal .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    #modal .row button { padding: 9px 14px; border: none; border-radius: 20px; background: #f76070; color: #fff; font-size: 14px; cursor: pointer; }
+    #modal .row button.ghost { background: #eee; color: #444; }
   </style>
- </HEAD>
+</head>
+<body>
+<canvas id="heart"></canvas>
 
- <BODY>
-  <canvas id="pinkboard"></canvas>
-  <script>
-  /*
- * Settings
- */
-var settings = {
-  particles: {
-    length:   500, // maximum amount of particles
-    duration:   2, // particle duration in sec
-    velocity: 100, // particle velocity in pixels/sec
-    effect: -0.75, // play with this for a nice effect
-    size:      30, // particle size in pixels
-  },
+<div id="bar">
+  <button id="addBtn">+ Thêm ảnh</button>
+  <button id="qrBtn">Tạo QR</button>
+</div>
+<input id="file" type="file" accept="image/*" multiple>
+<div id="toast"></div>
+
+<div id="modal">
+  <div class="box">
+    <h3>Gửi trái tim này cho người ấy</h3>
+    <div id="qr"></div>
+    <div id="link"></div>
+    <div class="row">
+      <button id="copyBtn">Sao chép link</button>
+      <button id="shareBtn">Chia sẻ</button>
+      <button id="closeBtn" class="ghost">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+// ====== CẤU HÌNH ======
+const HEART_COLOR = "#f76070";          // màu trái tim
+const HEART_SCALE = 1.6;                 // độ to của trái tim (1 = bằng bản Python)
+const DEFAULT_IMAGES = [                 // ảnh mặc định khi chưa thêm ảnh nào (thư mục images/)
+  "images/1.jpg", "images/2.jpg", "images/3.jpg", "images/4.jpg",
+  "images/5.jpg", "images/6.jpg", "images/7.jpg", "images/8.jpg",
+];
+const ORBIT_RADIUS = 560;                // bán kính vòng xoay 3D (px)
+const ORBIT_TILT = 0.24;                 // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
+const ORBIT_SPEED = 0.35;                // tốc độ xoay (rad/giây)
+const PERSPECTIVE = 1400;                // càng nhỏ, hiệu ứng xa gần càng mạnh
+const PHOTO_W = 96, PHOTO_H = 124;       // kích thước thẻ ảnh (px)
+const PHOTO_RADIUS = 12;                 // bo góc thẻ ảnh
+const PHOTO_BORDER = "#ffb3c1";          // màu viền ảnh
+const UPLOAD_MAX_SIDE = 900;             // ảnh tải lên được thu nhỏ về cạnh dài tối đa này (px)
+// ======================
+
+// ---- Trái tim: port 1:1 từ HungDam_TraiTim.py ----
+const IMAGE_ENLARGE = 11;
+let CX = 320, CY = 240, FIT = 1;        // FIT: hệ số co giãn theo cửa sổ
+const rand = () => Math.random() || 1e-12;
+const randint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const uniform = (a, b) => a + Math.random() * (b - a);
+const choice = arr => arr[Math.floor(Math.random() * arr.length)];
+
+function heartFunction(t, shrinkRatio = IMAGE_ENLARGE) {
+  let x = 16 * Math.pow(Math.sin(t), 3);
+  let y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+  return [Math.trunc(x * shrinkRatio), Math.trunc(y * shrinkRatio)];
+}
+function scatterInside(x, y, beta) {
+  const rx = -beta * Math.log(rand()), ry = -beta * Math.log(rand());
+  return [x - rx * x, y - ry * y];
+}
+function shrink(x, y, ratio) {
+  const force = -1 / Math.pow(x * x + y * y, 0.6);
+  return [x - ratio * force * x, y - ratio * force * y];
+}
+const curve = p => 2 * (2 * Math.sin(4 * p)) / (2 * Math.PI);
+
+class Heart {
+  constructor(generateFrame = 20) {
+    this.points = new Map(); this.edge = new Map(); this.center = new Map(); this.frames = [];
+    this.build(2000);
+    this.generateFrame = generateFrame;
+    for (let f = 0; f < generateFrame; f++) this.calc(f);
+  }
+  build(n) {
+    for (let i = 0; i < n; i++) { const [x, y] = heartFunction(uniform(0, 2 * Math.PI)); this.points.set(x + "," + y, [x, y]); }
+    for (const [px, py] of this.points.values()) for (let i = 0; i < 3; i++) { const [x, y] = scatterInside(px, py, 0.05); this.edge.set(x + "," + y, [x, y]); }
+    const list = [...this.points.values()];
+    for (let i = 0; i < 4000; i++) { const [px, py] = choice(list); const [x, y] = scatterInside(px, py, 0.17); this.center.set(x + "," + y, [x, y]); }
+  }
+  static pos(x, y, ratio) {
+    const force = 1 / Math.pow(x * x + y * y, 0.520);
+    return [x - (ratio * force * x + randint(-1, 1)), y - (ratio * force * y + randint(-1, 1))];
+  }
+  calc(frame) {
+    const c = curve(frame / 10 * Math.PI), ratio = 10 * c;
+    const haloR = Math.trunc(4 + 6 * (1 + c)), haloN = Math.trunc(3000 + 4000 * Math.abs(c * c));
+    const all = [], halo = new Set();
+    for (let i = 0; i < haloN; i++) {
+      let [x, y] = heartFunction(uniform(0, 2 * Math.PI), 11.6); [x, y] = shrink(x, y, haloR);
+      const k = x + "," + y;
+      if (!halo.has(k)) { halo.add(k); all.push([x + randint(-14, 14), y + randint(-14, 14), choice([1, 2, 2])]); }
+    }
+    for (const [px, py] of this.points.values()) { const [x, y] = Heart.pos(px, py, ratio); all.push([x, y, randint(1, 3)]); }
+    for (const [px, py] of this.edge.values())   { const [x, y] = Heart.pos(px, py, ratio); all.push([x, y, randint(1, 2)]); }
+    for (const [px, py] of this.center.values()) { const [x, y] = Heart.pos(px, py, ratio); all.push([x, y, randint(1, 2)]); }
+    this.frames[frame] = all;
+  }
+  render(ctx, frame) {
+    ctx.fillStyle = HEART_COLOR;
+    const k = HEART_SCALE * FIT, oy = -26 * k;              // dịch lên để tâm hình nằm đúng giữa màn hình
+    for (const [x, y, s] of this.frames[frame % this.generateFrame]) ctx.fillRect(CX + x * k, CY + oy + y * k, s * k, s * k);
+  }
+}
+
+// ---- Ảnh chạy quanh tim (vòng 3D nằm ngang) ----
+let photos = [];            // { img, url }  url = link trên server (nếu đã tải lên)
+let usingDefaults = true;   // đang hiển thị ảnh mẫu
+
+function addImage(src, url = null) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => { photos.push({ img, url }); resolve(true); };
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+}
+function clearDefaults() { if (usingDefaults) { photos = []; usingDefaults = false; } }
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+function layoutPhotos(time) {
+  const n = photos.length, out = [], R = ORBIT_RADIUS * FIT;
+  for (let i = 0; i < n; i++) {
+    const a = time * ORBIT_SPEED + (i / n) * Math.PI * 2;
+    const x3 = R * Math.cos(a), z3 = R * Math.sin(a);     // z > 0: phía trước tim, z < 0: phía sau
+    const y3 = z3 * (innerWidth < 600 ? 0.5 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
+    const scale = PERSPECTIVE / (PERSPECTIVE - z3 * 0.9);
+    // ẩn dần khi chạy ra sau tim: hiện rõ khi z > 0.15R, mất hẳn khi z < -0.15R
+    const visible = Math.max(0, Math.min(1, (z3 / R + 0.15) / 0.3));
+    if (visible > 0) out.push({ img: photos[i].img, x: CX + x3 * scale, y: CY + y3 * scale, z: z3, scale, visible, R });
+  }
+  out.sort((p, q) => p.z - q.z);
+  return out;
+}
+
+function drawCard(ctx, p) {
+  const f = p.scale * FIT, w = PHOTO_W * f, h = PHOTO_H * f, r = PHOTO_RADIUS * f;
+  const depth = (p.z + p.R) / (2 * p.R);
+  ctx.save();
+  ctx.globalAlpha = (0.5 + 0.5 * depth) * p.visible;
+  ctx.shadowColor = HEART_COLOR; ctx.shadowBlur = 10 + 20 * depth;
+  roundRect(ctx, p.x - w / 2 - 3, p.y - h / 2 - 3, w + 6, h + 6, r + 3);
+  ctx.fillStyle = PHOTO_BORDER; ctx.fill();
+  ctx.shadowBlur = 0;
+  roundRect(ctx, p.x - w / 2, p.y - h / 2, w, h, r); ctx.clip();
+  const img = p.img, ar = PHOTO_W / PHOTO_H;
+  let sw = img.width, sh = img.height;
+  if (sw / sh > ar) sw = sh * ar; else sh = sw / ar;
+  ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, p.x - w / 2, p.y - h / 2, w, h);
+  ctx.restore();
+}
+
+// ---- Thông báo ----
+const toastEl = document.getElementById("toast");
+let toastTimer;
+function toast(msg, ms = 2500) {
+  toastEl.textContent = msg; toastEl.classList.add("show");
+  clearTimeout(toastTimer); if (ms > 0) toastTimer = setTimeout(() => toastEl.classList.remove("show"), ms);
+}
+
+// ---- Thu nhỏ ảnh trước khi tải lên ----
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, UPLOAD_MAX_SIDE / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? resolve(b) : reject(new Error("toBlob")), "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("load")); };
+    img.src = url;
+  });
+}
+
+async function uploadBlob(blob, name) {
+  const r = await fetch("/api/upload?type=image/jpeg&name=" + encodeURIComponent(name), { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blob });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "upload " + r.status);
+  return (await r.json()).url;
+}
+
+// ---- Nút thêm ảnh ----
+const fileInput = document.getElementById("file");
+document.getElementById("addBtn").onclick = () => fileInput.click();
+fileInput.onchange = async () => {
+  const files = [...fileInput.files]; fileInput.value = "";
+  if (!files.length) return;
+  clearDefaults();
+  const isHosted = location.protocol.startsWith("http");
+  let done = 0, failed = 0;
+  for (const f of files) {
+    try {
+      const small = await compressImage(f);
+      const localUrl = URL.createObjectURL(small);
+      const entry = { img: null, url: null };
+      await new Promise(res => { const img = new Image(); img.onload = () => { entry.img = img; photos.push(entry); res(); }; img.onerror = res; img.src = localUrl; });
+      if (isHosted) {
+        toast(`Đang tải lên ${done + 1}/${files.length}...`, 0);
+        entry.url = await uploadBlob(small, f.name.replace(/\.[^.]+$/, "") + ".jpg");
+      }
+      done++;
+    } catch (e) { failed++; console.error(e); }
+  }
+  if (!isHosted) toast("Đã thêm ảnh. Tải lên server và tạo QR chỉ dùng được khi chạy trên web (Vercel).", 4000);
+  else if (failed) toast(`Xong ${done} ảnh, ${failed} ảnh lỗi (có thể chưa cấu hình Blob trên Vercel).`, 4000);
+  else toast(`Đã thêm ${done} ảnh. Bấm "Tạo QR" để gửi cho người khác.`, 3500);
 };
 
-/*
- * RequestAnimationFrame polyfill by Erik Möller
- */
-(function(){var b=0;var c=["ms","moz","webkit","o"];for(var a=0;a<c.length&&!window.requestAnimationFrame;++a){window.requestAnimationFrame=window[c[a]+"RequestAnimationFrame"];window.cancelAnimationFrame=window[c[a]+"CancelAnimationFrame"]||window[c[a]+"CancelRequestAnimationFrame"]}if(!window.requestAnimationFrame){window.requestAnimationFrame=function(h,e){var d=new Date().getTime();var f=Math.max(0,16-(d-b));var g=window.setTimeout(function(){h(d+f)},f);b=d+f;return g}}if(!window.cancelAnimationFrame){window.cancelAnimationFrame=function(d){clearTimeout(d)}}}());
+// ---- Tạo QR ----
+const modal = document.getElementById("modal"), qrEl = document.getElementById("qr"), linkEl = document.getElementById("link");
+let shareUrl = "";
+function showShare(url) {
+  shareUrl = url; qrEl.innerHTML = ""; linkEl.textContent = url;
+  new QRCode(qrEl, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  modal.classList.add("show");
+}
+document.getElementById("qrBtn").onclick = async () => {
+  if (!location.protocol.startsWith("http")) return toast("Tạo QR chỉ dùng được khi chạy trên web (Vercel).", 3500);
+  const urls = photos.map(p => p.url).filter(Boolean);
+  if (usingDefaults || !urls.length) {
+    // chưa có ảnh riêng: chia sẻ trang gốc với ảnh mẫu
+    return showShare(location.origin + location.pathname);
+  }
+  try {
+    toast("Đang tạo link...", 0);
+    const r = await fetch("/api/album", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: urls }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "album " + r.status);
+    const { id } = await r.json();
+    toastEl.classList.remove("show");
+    showShare(location.origin + location.pathname + "?a=" + id);
+  } catch (e) { console.error(e); toast("Không tạo được link: " + e.message, 4000); }
+};
+document.getElementById("closeBtn").onclick = () => modal.classList.remove("show");
+modal.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("show"); });
+document.getElementById("copyBtn").onclick = async () => {
+  try { await navigator.clipboard.writeText(shareUrl); toast("Đã sao chép link"); }
+  catch { toast("Không sao chép được, hãy chọn và copy link ở trên", 3000); }
+};
+document.getElementById("shareBtn").onclick = async () => {
+  if (navigator.share) { try { await navigator.share({ title: "HungDam_TraiTim", url: shareUrl }); } catch {} }
+  else toast("Trình duyệt này không hỗ trợ chia sẻ, hãy sao chép link", 3000);
+};
 
-/*
- * Point class
- */
-var Point = (function() {
-  function Point(x, y) {
-    this.x = (typeof x !== 'undefined') ? x : 0;
-    this.y = (typeof y !== 'undefined') ? y : 0;
-  }
-  Point.prototype.clone = function() {
-    return new Point(this.x, this.y);
-  };
-  Point.prototype.length = function(length) {
-    if (typeof length == 'undefined')
-      return Math.sqrt(this.x * this.x + this.y * this.y);
-    this.normalize();
-    this.x *= length;
-    this.y *= length;
-    return this;
-  };
-  Point.prototype.normalize = function() {
-    var length = this.length();
-    this.x /= length;
-    this.y /= length;
-    return this;
-  };
-  return Point;
-})();
+// ---- Tải album khi mở link chia sẻ (?a=...) ----
+async function loadAlbum(id) {
+  try {
+    const r = await fetch("/api/album?id=" + encodeURIComponent(id));
+    if (!r.ok) throw new Error("album " + r.status);
+    const data = await r.json();
+    if (Array.isArray(data.images) && data.images.length) {
+      clearDefaults();
+      await Promise.all(data.images.map(u => addImage(u, u)));
+      return;
+    }
+  } catch (e) { console.error(e); toast("Không tải được ảnh của link này, hiển thị ảnh mẫu.", 4000); }
+  if (!photos.length) DEFAULT_IMAGES.forEach(u => addImage(u));
+}
 
-/*
- * Particle class
- */
-var Particle = (function() {
-  function Particle() {
-    this.position = new Point();
-    this.velocity = new Point();
-    this.acceleration = new Point();
-    this.age = 0;
-  }
-  Particle.prototype.initialize = function(x, y, dx, dy) {
-    this.position.x = x;
-    this.position.y = y;
-    this.velocity.x = dx;
-    this.velocity.y = dy;
-    this.acceleration.x = dx * settings.particles.effect;
-    this.acceleration.y = dy * settings.particles.effect;
-    this.age = 0;
-  };
-  Particle.prototype.update = function(deltaTime) {
-    this.position.x += this.velocity.x * deltaTime;
-    this.position.y += this.velocity.y * deltaTime;
-    this.velocity.x += this.acceleration.x * deltaTime;
-    this.velocity.y += this.acceleration.y * deltaTime;
-    this.age += deltaTime;
-  };
-  Particle.prototype.draw = function(context, image) {
-    function ease(t) {
-      return (--t) * t * t + 1;
-    }
-    var size = image.width * ease(this.age / settings.particles.duration);
-    context.globalAlpha = 1 - this.age / settings.particles.duration;
-    context.drawImage(image, this.position.x - size / 2, this.position.y - size / 2, size, size);
-  };
-  return Particle;
-})();
+// ---- Vòng lặp ----
+const canvas = document.getElementById("heart"), ctx = canvas.getContext("2d");
+function resize() {
+  canvas.width = innerWidth; canvas.height = innerHeight; CX = canvas.width / 2; CY = canvas.height / 2;
+  FIT = Math.min(1, innerWidth / 1500, innerHeight / 820);   // màn nhỏ thì thu cả tim lẫn vòng ảnh lại cho vừa
+  if (innerWidth < 600) FIT = Math.min(1, innerWidth / 760, innerHeight / 820);  // điện thoại: cho to hơn chút
+}
+addEventListener("resize", resize); resize();
 
-/*
- * ParticlePool class
- */
-var ParticlePool = (function() {
-  var particles,
-      firstActive = 0,
-      firstFree   = 0,
-      duration    = settings.particles.duration;
-  
-  function ParticlePool(length) {
-    // create and populate particle pool
-    particles = new Array(length);
-    for (var i = 0; i < particles.length; i++)
-      particles[i] = new Particle();
-  }
-  ParticlePool.prototype.add = function(x, y, dx, dy) {
-    particles[firstFree].initialize(x, y, dx, dy);
-    
-    // handle circular queue
-    firstFree++;
-    if (firstFree   == particles.length) firstFree   = 0;
-    if (firstActive == firstFree       ) firstActive++;
-    if (firstActive == particles.length) firstActive = 0;
-  };
-  ParticlePool.prototype.update = function(deltaTime) {
-    var i;
-    
-    // update active particles
-    if (firstActive < firstFree) {
-      for (i = firstActive; i < firstFree; i++)
-        particles[i].update(deltaTime);
-    }
-    if (firstFree < firstActive) {
-      for (i = firstActive; i < particles.length; i++)
-        particles[i].update(deltaTime);
-      for (i = 0; i < firstFree; i++)
-        particles[i].update(deltaTime);
-    }
-    
-    // remove inactive particles
-    while (particles[firstActive].age >= duration && firstActive != firstFree) {
-      firstActive++;
-      if (firstActive == particles.length) firstActive = 0;
-    }
-    
-    
-  };
-  ParticlePool.prototype.draw = function(context, image) {
-    // draw active particles
-    if (firstActive < firstFree) {
-      for (i = firstActive; i < firstFree; i++)
-        particles[i].draw(context, image);
-    }
-    if (firstFree < firstActive) {
-      for (i = firstActive; i < particles.length; i++)
-        particles[i].draw(context, image);
-      for (i = 0; i < firstFree; i++)
-        particles[i].draw(context, image);
-    }
-  };
-  return ParticlePool;
-})();
+const albumId = new URLSearchParams(location.search).get("a");
+if (albumId) loadAlbum(albumId); else DEFAULT_IMAGES.forEach(u => addImage(u));
 
-/*
- * Putting it all together
- */
-(function(canvas) {
-  var context = canvas.getContext('2d'),
-      particles = new ParticlePool(settings.particles.length),
-      particleRate = settings.particles.length / settings.particles.duration, // particles/sec
-      time;
-  
-  // get point on heart with -PI <= t <= PI
-  function pointOnHeart(t) {
-    return new Point(
-      160 * Math.pow(Math.sin(t), 3),
-      130 * Math.cos(t) - 50 * Math.cos(2 * t) - 20 * Math.cos(3 * t) - 10 * Math.cos(4 * t) + 25
-    );
-  }
-  
-  // creating the particle image using a dummy canvas
-  var image = (function() {
-    var canvas  = document.createElement('canvas'),
-        context = canvas.getContext('2d');
-    canvas.width  = settings.particles.size;
-    canvas.height = settings.particles.size;
-    // helper function to create the path
-    function to(t) {
-      var point = pointOnHeart(t);
-      point.x = settings.particles.size / 2 + point.x * settings.particles.size / 350;
-      point.y = settings.particles.size / 2 - point.y * settings.particles.size / 350;
-      return point;
-    }
-    // create the path
-    context.beginPath();
-    var t = -Math.PI;
-    var point = to(t);
-    context.moveTo(point.x, point.y);
-    while (t < Math.PI) {
-      t += 0.01; // baby steps!
-      point = to(t);
-      context.lineTo(point.x, point.y);
-    }
-    context.closePath();
-    // create the fill
-    context.fillStyle = '#ea80b0';
-    context.fill();
-    // create the image
-    var image = new Image();
-    image.src = canvas.toDataURL();
-    return image;
-  })();
-  
-  // render that thing!
-  function render() {
-    // next animation frame
-    requestAnimationFrame(render);
-    
-    // update time
-    var newTime   = new Date().getTime() / 1000,
-        deltaTime = newTime - (time || newTime);
-    time = newTime;
-    
-    // clear canvas
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // create new particles
-    var amount = particleRate * deltaTime;
-    for (var i = 0; i < amount; i++) {
-      var pos = pointOnHeart(Math.PI - 2 * Math.PI * Math.random());
-      var dir = pos.clone().length(settings.particles.velocity);
-      particles.add(canvas.width / 2 + pos.x, canvas.height / 2 - pos.y, dir.x, -dir.y);
-    }
-    
-    // update and draw particles
-    particles.update(deltaTime);
-    particles.draw(context, image);
-  }
-  
-  // handle (re-)sizing of the canvas
-  function onResize() {
-    canvas.width  = canvas.clientWidth;
-    canvas.height = canvas.clientHeight;
-  }
-  window.onresize = onResize;
-  
-  // delay rendering bootstrap
-  setTimeout(function() {
-    onResize();
-    render();
-  }, 10);
-})(document.getElementById('pinkboard'));
-  </script>
- </BODY>
-</HTML>
+const heart = new Heart();
+let frame = 0, lastHeart = 0;
+function loop(now) {
+  if (now - lastHeart >= 160) { frame++; lastHeart = now; }   // tim đập cùng nhịp 160ms như bản Python
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cards = layoutPhotos(now / 1000);
+  for (const p of cards) if (p.z < 0) drawCard(ctx, p);        // phần còn mờ ở hai bên
+  heart.render(ctx, frame);
+  for (const p of cards) if (p.z >= 0) drawCard(ctx, p);       // ảnh phía trước tim
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
