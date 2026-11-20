@@ -18,6 +18,7 @@
       background: rgba(0,0,0,.65); color: #ffb3c1; font-size: 15px; cursor: pointer; opacity: .75;
     }
     #bar button:hover, #bar button:active { opacity: 1; background: rgba(247,96,112,.25); }
+    #bar button.on { opacity: 1; background: rgba(247,96,112,.35); color: #fff; }
     #file { display: none; }
     #toast {
       position: fixed; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
@@ -43,6 +44,7 @@
 <div id="bar">
   <button id="addBtn">+ Thêm ảnh</button>
   <button id="qrBtn">Tạo QR</button>
+  <button id="soundBtn" title="Bật/tắt tiếng tim đập">🔇 Âm thanh</button>
 </div>
 <input id="file" type="file" accept="image/*" multiple>
 <div id="toast"></div>
@@ -67,7 +69,9 @@ const HEART_COLOR = "#f76070";          // màu trái tim
 const HEART_SCALE = 1.6;                 // độ to của trái tim (1 = bằng bản Python)
 const ORBIT_RADIUS = 560;                // bán kính vòng xoay 3D (px)
 const ORBIT_TILT = 0.24;                 // độ nghiêng nhìn từ trên xuống (0 = nhìn ngang hoàn toàn)
-const ORBIT_SPEED = 0.35;                // tốc độ xoay (rad/giây)
+const ORBIT_SPEED = 0.45;                // tốc độ xoay trung bình (rad/giây)
+const ORBIT_EASE = 0.65;                 // 0 = đều; càng gần 1 ảnh càng chậm lại khi ra phía trước và vút nhanh khi ra sau
+const SOUND_VOLUME = 0.8;                // âm lượng tiếng tim đập (0..1)
 const PERSPECTIVE = 1400;                // càng nhỏ, hiệu ứng xa gần càng mạnh
 const PHOTO_W = 130, PHOTO_H = 168;      // kích thước thẻ ảnh (px)
 const PHOTO_RADIUS = 14;                 // bo góc thẻ ảnh
@@ -160,7 +164,9 @@ function layoutPhotos(time) {
   // bán kính vòng: không cho ảnh tràn khỏi mép màn hình (quan trọng trên điện thoại)
   const n = photos.length, out = [], R = Math.min(ORBIT_RADIUS * FIT, innerWidth / 2 - PHOTO_W * FIT * 0.65);
   for (let i = 0; i < n; i++) {
-    const a = time * ORBIT_SPEED + (i / n) * Math.PI * 2;
+    const t = time * ORBIT_SPEED + (i / n) * Math.PI * 2;
+    // a = t + E*cos(t): tốc độ góc = 1 - E*sin(t) -> chậm nhất ở phía trước (sin=1), nhanh nhất ở phía sau
+    const a = t + ORBIT_EASE * Math.cos(t);
     const x3 = R * Math.cos(a), z3 = R * Math.sin(a);     // z > 0: phía trước tim, z < 0: phía sau
     const y3 = z3 * (innerWidth < 600 ? 0.95 : ORBIT_TILT);   // điện thoại: nghiêng nhiều hơn để ảnh chạy phía dưới tim
     const scale = PERSPECTIVE / (PERSPECTIVE - z3 * 0.9);
@@ -295,6 +301,48 @@ async function loadAlbum(id) {
   } catch (e) { console.error(e); toast("Không tải được ảnh của link này.", 4000); }
 }
 
+// ---- Âm thanh tim đập (Web Audio, không cần file) ----
+let audioCtx = null, soundOn = false;
+const soundBtn = document.getElementById("soundBtn");
+
+function thump(when, freq, gain, dur) {           // một tiếng "thụp" trầm
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
+  o.type = "sine";
+  o.frequency.setValueAtTime(freq, when);
+  o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * 0.45), when + dur);
+  f.type = "lowpass"; f.frequency.value = 180;
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(gain, when + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  o.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  o.start(when); o.stop(when + dur + 0.05);
+}
+function playHeartbeat() {                         // "lub" rồi "dub" nhẹ hơn sau 0.14s
+  if (!soundOn || !audioCtx || audioCtx.state !== "running") return;
+  const t = audioCtx.currentTime + 0.01;
+  thump(t, 62, SOUND_VOLUME, 0.22);
+  thump(t + 0.14, 54, SOUND_VOLUME * 0.6, 0.18);
+}
+async function setSound(on) {
+  if (on) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try { await audioCtx.resume(); } catch {}
+    if (audioCtx.state !== "running") { toast("Không bật được âm thanh, hãy chạm lại vào màn hình.", 3000); return; }
+  }
+  soundOn = on;
+  soundBtn.textContent = on ? "🔊 Âm thanh" : "🔇 Âm thanh";
+  soundBtn.classList.toggle("on", on);
+}
+soundBtn.onclick = e => { e.stopPropagation(); setSound(!soundOn); };
+// chạm/click lần đầu vào trang là bật luôn (trình duyệt chỉ cho phát âm sau khi người dùng tương tác)
+function firstTouch(e) {
+  if (e.target.closest("#bar, #modal")) return;
+  removeEventListener("pointerdown", firstTouch);
+  if (!soundOn) setSound(true);
+}
+addEventListener("pointerdown", firstTouch);
+setTimeout(() => { if (!soundOn) toast("Chạm vào màn hình để bật tiếng tim đập", 3500); }, 800);
+
 // ---- Vòng lặp ----
 const canvas = document.getElementById("heart"), ctx = canvas.getContext("2d");
 function resize() {
@@ -310,7 +358,10 @@ if (albumId) loadAlbum(albumId);   // không có link album thì chỉ hiện tr
 const heart = new Heart();
 let frame = 0, lastHeart = 0;
 function loop(now) {
-  if (now - lastHeart >= 160) { frame++; lastHeart = now; }   // tim đập cùng nhịp 160ms như bản Python
+  if (now - lastHeart >= 160) {                                 // tim đập cùng nhịp 160ms như bản Python
+    frame++; lastHeart = now;
+    if (frame % 5 === 3) playHeartbeat();                       // mỗi 5 khung (0.8s) tim nở ra một lần -> phát "lub-dub"
+  }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const cards = layoutPhotos(now / 1000);
   for (const p of cards) if (p.z < 0) drawCard(ctx, p);        // phần còn mờ ở hai bên
